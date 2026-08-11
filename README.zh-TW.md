@@ -9,7 +9,7 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/<your-org>/Rsyslog-FanOut.git && cd Rsyslog-FanOut
+git clone https://github.com/huangalou/rsyslog-fanout.git && cd rsyslog-fanout
 export FANOUT_ADMIN_PASSWORD=change-me-please
 cd docker && docker compose up -d --build
 ```
