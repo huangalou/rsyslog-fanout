@@ -6,13 +6,13 @@
 
 **Architecture:** 單一 Docker 容器內以 s6-overlay 跑 rsyslogd 與 Node 管理服務。SQLite 為設定真相來源，管理服務產生 rsyslog conf（驗證→切換→回滾），並經 impstats 與 loopback 複製流提供監控。前端為 Vue 3 SPA，由 Fastify 服務靜態檔。
 
-**Tech Stack:** Node 20 + TypeScript (ESM) / Fastify 4 / better-sqlite3 / zod / bcryptjs / @fastify/websocket / Vue 3 + Vite + Pinia + vue-router / Vitest / Playwright / Docker + s6-overlay / rsyslog (Debian slim)
+**Tech Stack:** Node 22 + TypeScript (ESM) / Fastify 4 / better-sqlite3 / zod / bcryptjs / @fastify/websocket / Vue 3 + Vite + Pinia + vue-router / Vitest / Playwright / Docker + s6-overlay / rsyslog (Debian slim)
 
 **Spec:** `docs/superpowers/specs/2026-08-11-rsyslog-fanout-design.md`
 
 ## Global Constraints
 
-- Node 20、TypeScript `strict: true`、ESM（`"type": "module"`）
+- Node 22、TypeScript `strict: true`、ESM（`"type": "module"`）
 - 測試覆蓋率目標 80%；單元/整合用 Vitest，E2E 用 Playwright
 - 單檔 <800 行、函式 <50 行；不可變資料模式優先
 - Commit 格式 `<type>: <描述>`（feat/fix/refactor/docs/test/chore/perf/ci），描述用繁體中文

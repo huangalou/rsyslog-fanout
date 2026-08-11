@@ -1,0 +1,18 @@
+{
+  "name": "e2e",
+  "version": "1.0.0",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "playwright test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Rsyslog FanOut E2E：透明轉發驗證 + Playwright UI 流程",
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
+  }
+}

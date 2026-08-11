@@ -263,7 +263,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 22 }
       - run: npm ci --prefix server && npm run --prefix server test:coverage
       - run: npm ci --prefix web && npx --prefix web vitest run && npm run --prefix web build
   e2e:
@@ -276,9 +276,10 @@ jobs:
           for i in $(seq 1 30); do
             curl -sf localhost:8080/api/health && break; sleep 2; done
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 22 }
       - run: npm ci --prefix e2e && npx --prefix e2e playwright install --with-deps chromium
       - run: FANOUT_ADMIN_PASSWORD=citestpw npx --prefix e2e playwright test
+      - run: FANOUT_ADMIN_PASSWORD=citestpw bash e2e/scripts/transparency-test.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: e2e-artifacts, path: e2e/screenshots }

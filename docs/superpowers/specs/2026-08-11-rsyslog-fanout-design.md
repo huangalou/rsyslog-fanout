@@ -43,11 +43,11 @@
 | 層 | 選型 | 理由 |
 |----|------|------|
 | 引擎 | rsyslog（容器內建） | 背壓、磁碟佇列、斷線重送皆為現成且久經考驗 |
-| 後端 | Fastify（Node 20 + TypeScript） | REST + WebSocket 即時推播自然；與使用者既有技術棧一致 |
+| 後端 | Fastify（Node 22 + TypeScript） | REST + WebSocket 即時推播自然；與使用者既有技術棧一致（原定 Node 20，因 better-sqlite3@13 需 ≥22，於實作期調整） |
 | 前端 | Vue 3 + Vite SPA | build 後由 Fastify 服務靜態檔 |
 | 儲存 | SQLite（存於 /data） | 設定的單一真相來源；容器重建不掉設定 |
 | 程序管理 | s6-overlay | 單容器雙程序；rsyslogd 與管理服務解耦，互不牽連 |
-| 基底 image | Debian slim + rsyslog + Node 20 | rsyslog 套件完整、模組齊全 |
+| 基底 image | Debian slim + rsyslog + Node 22 | rsyslog 套件完整、模組齊全（原定 Node 20，因 better-sqlite3@13 需 ≥22，於實作期調整） |
 
 ### 容器埠限制（重要設計決策）
 
