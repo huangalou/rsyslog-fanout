@@ -10,7 +10,9 @@ export function connectWs(h: WsHandlers): () => void {
   let ws: WebSocket | null = null
   let delay = 0
   let closed = false
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   const open = () => {
+    if (closed) return
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`)
     ws.onopen = () => {
       delay = 0
@@ -25,12 +27,13 @@ export function connectWs(h: WsHandlers): () => void {
       h.onState?.(false)
       if (closed) return
       delay = nextBackoff(delay)
-      setTimeout(open, delay)
+      reconnectTimer = setTimeout(open, delay)
     }
   }
   open()
   return () => {
     closed = true
+    if (reconnectTimer !== null) clearTimeout(reconnectTimer)
     ws?.close()
   }
 }

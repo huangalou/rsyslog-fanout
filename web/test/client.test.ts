@@ -1,8 +1,15 @@
-import { describe, it, expect, vi } from 'vitest'
-import { api, ApiError } from '../src/api/client'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { api, ApiError, setUnauthorizedHandler } from '../src/api/client'
 
 const mockFetch = (status: number, body: unknown) =>
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body), { status })))
+
+const mockFetchRaw = (status: number, rawBody: string) =>
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(rawBody, { status })))
+
+afterEach(() => {
+  setUnauthorizedHandler(() => {})
+})
 
 describe('api client', () => {
   it('成功時回傳 data', async () => {
@@ -18,5 +25,18 @@ describe('api client', () => {
     const spy = vi.spyOn(window.history, 'pushState')
     await expect(api.get('/api/inputs')).rejects.toBeInstanceOf(ApiError)
     // router 注入見實作：client 觸發全域 callback
+  })
+  it('非 JSON 回應（如 502 HTML）時丟 ApiError 而非未捕捉的 SyntaxError', async () => {
+    mockFetchRaw(502, '<html>bad gateway</html>')
+    const err = await api.get('/api/inputs').catch((e) => e)
+    expect(err).toBeInstanceOf(ApiError)
+    expect((err as ApiError).status).toBe(502)
+  })
+  it('401 + 非 JSON body 時仍會觸發 onUnauthorized handler', async () => {
+    mockFetchRaw(401, '<html>unauthorized</html>')
+    const handler = vi.fn()
+    setUnauthorizedHandler(handler)
+    await expect(api.get('/api/inputs')).rejects.toBeInstanceOf(ApiError)
+    expect(handler).toHaveBeenCalledTimes(1)
   })
 })

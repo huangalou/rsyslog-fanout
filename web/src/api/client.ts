@@ -18,8 +18,13 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     headers: body !== undefined ? { 'content-type': 'application/json' } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
-  const env = (await res.json()) as { success: boolean; data: T; error: string | null }
   if (res.status === 401) onUnauthorized()
+  let env: { success: boolean; data: T; error: string | null }
+  try {
+    env = (await res.json()) as { success: boolean; data: T; error: string | null }
+  } catch {
+    throw new ApiError(res.statusText || `HTTP ${res.status}`, res.status)
+  }
   if (!env.success) throw new ApiError(env.error ?? '未知錯誤', res.status)
   return env.data
 }
