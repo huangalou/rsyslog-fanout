@@ -1,4 +1,9 @@
 import type { FastifyInstance } from 'fastify'
+import { ok } from '../lib/envelope.js'
 
-// 空殼：Task 8/9 填實作（stats/tail SSE 或 WebSocket）。
-export async function statsRoutes(_app: FastifyInstance): Promise<void> {}
+export async function statsRoutes(app: FastifyInstance): Promise<void> {
+  app.get('/api/stats/overview', async () => {
+    const { monitor } = app.deps
+    return ok({ ...monitor.snapshot(), tail: app.deps.tailRing?.() ?? [] })
+  })
+}

@@ -5,17 +5,19 @@ import bcrypt from 'bcryptjs'
 import type { Repo } from './domain/repo.js'
 import type { AppEnv } from './env.js'
 import type { ApplyResult } from './rsyslog/apply.js'
-import type { MonitorHub } from './monitor/hub.js'
+import type { MonitorHub, TailMsg } from './monitor/hub.js'
 import { fail } from './lib/envelope.js'
 import { authRoutes, makeSessions } from './routes/auth.js'
 import { crudRoutes } from './routes/crud.js'
 import { configRoutes } from './routes/config.js'
 import { statsRoutes } from './routes/stats.js'
+import { wsRoutes } from './routes/ws.js'
 
 export interface AppDeps {
   repo: Repo; env: AppEnv
   apply: () => Promise<ApplyResult>
   monitor: MonitorHub
+  tailRing?: () => TailMsg[]
 }
 
 export function buildApp(deps: AppDeps): FastifyInstance {
@@ -41,5 +43,6 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.register(crudRoutes)
   app.register(configRoutes)
   app.register(statsRoutes)
+  app.register(wsRoutes)
   return app
 }
