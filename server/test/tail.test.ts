@@ -1,10 +1,14 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createTailListener } from '../src/monitor/tail.js'
 import { createHub } from '../src/monitor/hub.js'
 
 const pkt = (i: number) => Buffer.from(JSON.stringify({ src: '10.0.0.9', input: 1, fac: 16, sev: 6, msg: `m${i}` }))
 
 describe('tail listener', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('datagram 解析後進 ring、emitTail、更新來源', () => {
     const hub = createHub({ staleAfterMs: 600000 })
     const seen: string[] = []
@@ -29,12 +33,27 @@ describe('tail listener', () => {
     vi.advanceTimersByTime(1000)
     t.handleDatagram(pkt(6))
     expect(t.ring()).toHaveLength(3)
-    vi.useRealTimers()
   })
   it('壞 JSON 靜默丟棄', () => {
     const hub = createHub({ staleAfterMs: 600000 })
     const t = createTailListener(hub, { port: 0 })
     t.handleDatagram(Buffer.from('garbage'))
+    expect(t.ring()).toHaveLength(0)
+  })
+  it('有效 JSON 但非物件（null、數字、陣列）靜默丟棄', () => {
+    const hub = createHub({ staleAfterMs: 600000 })
+    const t = createTailListener(hub, { port: 0 })
+    t.handleDatagram(Buffer.from('null'))
+    t.handleDatagram(Buffer.from('42'))
+    t.handleDatagram(Buffer.from('[1,2,3]'))
+    expect(t.ring()).toHaveLength(0)
+  })
+  it('缺少 src 或 msg 欄位靜默丟棄', () => {
+    const hub = createHub({ staleAfterMs: 600000 })
+    const t = createTailListener(hub, { port: 0 })
+    t.handleDatagram(Buffer.from(JSON.stringify({ input: 1, fac: 16, sev: 6, msg: 'test' })))
+    t.handleDatagram(Buffer.from(JSON.stringify({ src: '10.0.0.9', input: 1, fac: 16, sev: 6 })))
+    t.handleDatagram(Buffer.from(JSON.stringify({ src: 123, msg: 'test' })))
     expect(t.ring()).toHaveLength(0)
   })
 })

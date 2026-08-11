@@ -25,6 +25,7 @@ export function createTailListener(
     } catch {
       return
     }
+    if (typeof parsed !== 'object' || parsed === null) return
     const p = parsed as Record<string, unknown>
     if (typeof p.src !== 'string' || typeof p.msg !== 'string') return
     windowCount++
@@ -36,10 +37,18 @@ export function createTailListener(
   }
 
   sock.on('message', handleDatagram)
+  sock.on('error', (err) => console.error('[tail]', err.message))
   return {
     handleDatagram,
     ring: () => [...ring],
-    start: () => new Promise<void>((res) => sock.bind(opts.port, '127.0.0.1', res)),
+    start: () =>
+      new Promise<void>((resolve, reject) => {
+        sock.once('error', reject)
+        sock.bind(opts.port, '127.0.0.1', () => {
+          sock.off('error', reject)
+          resolve()
+        })
+      }),
     stop: () => sock.close(),
   }
 }
