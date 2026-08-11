@@ -1,0 +1,64 @@
+/*
+ * Design tokens — "ops console" 視覺方向。
+ * 深色監控介面；等寬字體用於 log/數字，UI 文案走無襯線字體；
+ * 狀態語意色：綠=健康、琥珀=佇列堆積/疑似斷訊、紅=不可達/失敗。
+ * 所有色彩/間距/字體一律透過這裡的 custom properties 取用，禁止散落硬編碼。
+ */
+:root {
+  /* Color */
+  --color-bg: #0b0f14;
+  --color-surface: #131a22;
+  --color-surface-raised: #1a2330;
+  --color-text: #e6edf3;
+  --color-text-muted: #8b98a5;
+  --color-border: #26313d;
+  --color-accent: #4fb3ff;
+  --color-ok: #3ecf8e;
+  --color-warn: #e8a33d;
+  --color-danger: #f0546b;
+
+  /* Typography */
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Spacing */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-normal: 300ms;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-ui);
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--font-mono);
+}
