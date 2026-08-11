@@ -31,9 +31,9 @@ onUnmounted(() => {
   <section class="page dashboard">
     <header class="dash-header">
       <h1>Dashboard</h1>
-      <RouterLink v-if="stats.dirty" to="/forwarding" class="dirty-banner" role="status">
-        有未套用的變更 → 前往套用
-      </RouterLink>
+      <span v-if="stats.dirty" role="status" class="dirty-banner-wrap">
+        <RouterLink to="/forwarding" class="dirty-banner">有未套用的變更 → 前往套用</RouterLink>
+      </span>
     </header>
 
     <section class="chart-section" aria-labelledby="rate-heading">
