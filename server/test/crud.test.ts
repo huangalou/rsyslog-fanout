@@ -39,10 +39,47 @@ describe('inputs CRUD', () => {
   })
 })
 
+describe('destinations CRUD', () => {
+  it('建立→列出→更新（headerMode）→刪除', async () => {
+    const c = await post('/api/destinations', { name: 'd1', protocol: 'udp', host: '10.0.0.1', port: 514, enabled: true })
+    expect(c.statusCode).toBe(200)
+    expect(c.json().data.headerMode).toBe('raw')
+    const id = c.json().data.id
+    expect((await app.inject({ url: '/api/destinations', cookies: cookie })).json().data).toHaveLength(1)
+    const u = await app.inject({
+      method: 'PUT', url: `/api/destinations/${id}`,
+      payload: { name: 'd2', protocol: 'udp', host: '10.0.0.1', port: 514, headerMode: 'standard', enabled: false },
+      cookies: cookie,
+    })
+    expect(u.statusCode).toBe(200)
+    expect(u.json().data.headerMode).toBe('standard')
+    const d = await app.inject({ method: 'DELETE', url: `/api/destinations/${id}`, cookies: cookie })
+    expect(d.statusCode).toBe(200)
+    expect((await app.inject({ url: '/api/destinations', cookies: cookie })).json().data).toHaveLength(0)
+  })
+})
+
 describe('routes + config', () => {
   it('route 指向不存在的 input → 400', async () => {
     const r = await post('/api/routes', { inputId: 999, destinationId: 999, sourceFilter: null, facilities: null, maxSeverity: null })
     expect(r.statusCode).toBe(400)
+  })
+  it('route 成功建立並保真（sourceFilter/facilities/maxSeverity round-trip）→ 刪除', async () => {
+    const i = await post('/api/inputs', { name: 'i1', protocol: 'udp', port: 514, enabled: true })
+    const d = await post('/api/destinations', { name: 'd1', protocol: 'udp', host: '10.0.0.1', port: 514, enabled: true })
+    const payload = {
+      inputId: i.json().data.id, destinationId: d.json().data.id,
+      sourceFilter: '10.1.0.0/16', facilities: [16, 17], maxSeverity: 4,
+    }
+    const r = await post('/api/routes', payload)
+    expect(r.statusCode).toBe(200)
+    expect(r.json().data).toMatchObject(payload)
+    const id = r.json().data.id
+    const list = await app.inject({ url: '/api/routes', cookies: cookie })
+    expect(list.json().data).toContainEqual(r.json().data)
+    const del = await app.inject({ method: 'DELETE', url: `/api/routes/${id}`, cookies: cookie })
+    expect(del.statusCode).toBe(200)
+    expect((await app.inject({ url: '/api/routes', cookies: cookie })).json().data).toHaveLength(0)
   })
   it('config status：初始 dirty、apply 後乾淨', async () => {
     await post('/api/inputs', { name: 'n', protocol: 'udp', port: 514, enabled: true })

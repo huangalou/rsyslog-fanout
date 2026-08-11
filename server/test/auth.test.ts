@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 import bcrypt from 'bcryptjs'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openDb } from '../src/db/db.js'
@@ -10,10 +10,16 @@ import { loadEnv } from '../src/env.js'
 import { applyConfig } from '../src/rsyslog/apply.js'
 import type { FastifyInstance } from 'fastify'
 
+const tmpDirs: string[] = []
+afterAll(() => {
+  for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true })
+})
+
 export function makeTestApp(): FastifyInstance {
   const repo = createRepo(openDb(':memory:'))
   repo.setPasswordHash(bcrypt.hashSync('secret', 10))
   const dir = mkdtempSync(join(tmpdir(), 'fanout-test-'))
+  tmpDirs.push(dir)
   const paths = { staging: join(dir, 's.conf'), live: join(dir, 'l.conf'), backup: join(dir, 'b.conf') }
   return buildApp({
     repo, env: loadEnv({ FANOUT_ADMIN_PASSWORD: 'secret', FANOUT_DATA_DIR: '/tmp/fanout-test' }),
