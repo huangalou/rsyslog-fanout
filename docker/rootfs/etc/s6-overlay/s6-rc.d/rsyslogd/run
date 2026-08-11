@@ -1,0 +1,4 @@
+#!/bin/sh
+CONF=/data/rsyslog/live.conf
+[ -f "$CONF" ] || CONF=/etc/rsyslog-bootstrap.conf
+exec /usr/sbin/rsyslogd -n -f "$CONF"

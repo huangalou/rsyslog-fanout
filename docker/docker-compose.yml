@@ -1,0 +1,21 @@
+services:
+  fanout:
+    build: { context: .., dockerfile: docker/Dockerfile }
+    image: rsyslog-fanout
+    container_name: rsyslog-fanout
+    restart: unless-stopped
+    environment:
+      FANOUT_ADMIN_PASSWORD: ${FANOUT_ADMIN_PASSWORD:?請設定初始管理密碼}
+      FANOUT_PORT_RANGE: "514,5140-5199"
+    ports:
+      - "8080:8080"
+      - "514:514/udp"
+      - "514:514/tcp"
+      - "5140-5199:5140-5199/udp"
+      - "5140-5199:5140-5199/tcp"
+    volumes:
+      - fanout-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+volumes:
+  fanout-data:
