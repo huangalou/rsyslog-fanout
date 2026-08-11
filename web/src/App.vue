@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useStats } from './stores/stats'
 
-// TODO(Task 12): dirty 徽章目前為靜態佔位，實際值由 useStats() 的 10 秒輪詢（GET /api/config/status）填入。
-const dirty = ref(false)
+// dirty 徽章讀取 useStats().dirty；輪詢本身只在 Dashboard 掛載期間執行
+// （stats.start()/stop() 綁定 Dashboard 的 onMounted/onUnmounted）。
+// 離開 Dashboard 後徽章會停在最後一次輪詢結果，不會繼續更新——
+// 這是刻意選擇的簡單做法：避免在 App 層重複維護一份輪詢/WS 生命週期。
+const stats = useStats()
+const dirty = computed(() => stats.dirty)
 
 const route = useRoute()
 const isLoginPage = computed(() => route.path === '/login')
