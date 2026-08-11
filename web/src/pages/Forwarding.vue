@@ -186,14 +186,23 @@ async function saveFilter(value: RouteFilterValue) {
   if (!editingFilter.value) return
   const { inputId, destinationId } = editingFilter.value
   routeErrorMsg.value = ''
+  const existing = findRoute(inputId, destinationId)
   try {
-    const existing = findRoute(inputId, destinationId)
     if (existing) await api.del(`/api/routes/${existing.id}`)
     await api.post('/api/routes', { inputId, destinationId, ...value })
     editingFilter.value = null
-    await loadRoutes()
   } catch (e) {
-    routeErrorMsg.value = e instanceof Error ? e.message : '未知錯誤'
+    // 沒有 PUT /api/routes/:id，編輯過濾條件實作為「先刪舊 route、再建新 route」。
+    // 若舊 route 已刪除但新 route 建立失敗（例如 sourceFilter 未通過驗證），
+    // 本地 routes 狀態會與後端不一致，因此無論成功或失敗都要 reload 讓畫面對齊後端真實狀態，
+    // 並提示使用者原本的過濾條件已被移除、需要重新設定。
+    routeErrorMsg.value = existing
+      ? `更新過濾條件失敗，原有路由已被移除，請重新設定：${e instanceof Error ? e.message : '未知錯誤'}`
+      : e instanceof Error
+        ? e.message
+        : '未知錯誤'
+  } finally {
+    await loadRoutes()
   }
 }
 
