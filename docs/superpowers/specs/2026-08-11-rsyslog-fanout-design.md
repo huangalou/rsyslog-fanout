@@ -114,9 +114,9 @@ UI 常駐「有未套用的變更」徽章。
 
 ### 來源二：loopback 複製流
 
-- 每個 input ruleset 追加一個 action：以 JSON template（來源 IP、input 標籤、facility、severity、原始訊息）轉一份至 `127.0.0.1` 內部 UDP 埠，action 上設 ratelimit（預設 500 msg/s）保護管理服務。
+- 每個 input ruleset 追加一個 action：以 JSON template（來源 IP、input 標籤、facility、severity、原始訊息）轉一份至 `127.0.0.1:15514`（容器內部 UDP 埠，不對外發布），action 上設 ratelimit（預設 500 msg/s）保護管理服務。
 - 管理服務據此提供：
-  - **Live Tail**：最近 N 則環形緩衝 + WebSocket 推播（可依 input 過濾；無訂閱者時直接丟棄）。
+  - **Live Tail**：最近 1000 則環形緩衝 + WebSocket 推播（可依 input 過濾；無訂閱者時直接丟棄）。
   - **來源健康狀態**：維護「來源 IP → 最後收到時間」表，超過閾值標示疑似斷訊。
 
 儀表板與 Live Tail 共用一條 WebSocket；前端斷線指數退避重連。
