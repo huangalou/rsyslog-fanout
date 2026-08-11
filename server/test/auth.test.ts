@@ -1,17 +1,30 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import bcrypt from 'bcryptjs'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { openDb } from '../src/db/db.js'
 import { createRepo } from '../src/domain/repo.js'
 import { buildApp } from '../src/app.js'
 import { loadEnv } from '../src/env.js'
+import { applyConfig } from '../src/rsyslog/apply.js'
 import type { FastifyInstance } from 'fastify'
 
 export function makeTestApp(): FastifyInstance {
   const repo = createRepo(openDb(':memory:'))
   repo.setPasswordHash(bcrypt.hashSync('secret', 10))
+  const dir = mkdtempSync(join(tmpdir(), 'fanout-test-'))
+  const paths = { staging: join(dir, 's.conf'), live: join(dir, 'l.conf'), backup: join(dir, 'b.conf') }
   return buildApp({
     repo, env: loadEnv({ FANOUT_ADMIN_PASSWORD: 'secret', FANOUT_DATA_DIR: '/tmp/fanout-test' }),
-    apply: async () => ({ applied: true }),
+    apply: () =>
+      applyConfig({
+        repo,
+        paths,
+        genOpts: { tailPort: 15514, dataDir: '/tmp/fanout-test' },
+        validate: async () => ({ ok: true, output: '' }),
+        restart: async () => ({ ok: true, output: '' }),
+      }),
     monitor: { snapshot: () => ({ inputs: {}, actions: {}, sources: [] }), onStats: () => () => {}, onTail: () => () => {} },
   })
 }
