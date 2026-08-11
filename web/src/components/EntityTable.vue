@@ -1,8 +1,10 @@
-<script setup lang="ts">
+<script setup lang="ts" generic="T">
 // 通用清單表格：Task 14（Destinations/Routes）、Task 15（Sources）重用。
-// columns 決定表頭與欄位順序；rows 為任意形狀的資料列，透過 row[col.key] 取值，
-// 呼叫端可用具名 slot `cell-<key>` 覆寫該欄位的呈現方式（例如格式化、狀態徽章）。
-// `actions` slot 傳入單列 row，供呼叫端放編輯/刪除按鈕。
+// columns 決定表頭與欄位順序；rows 為呼叫端自訂形狀的資料列（不限定 Record 索引簽章，
+// 讓一般 domain interface 如 Input/Destination 可直接當作型別參數，不需雙重轉型）。
+// 呼叫端可用具名 slot `cell-<key>` 覆寫該欄位的呈現方式（例如格式化、狀態徽章），
+// 未覆寫時預設用 row[col.key] 呈現。
+// `actions` slot 傳入單列 row（型別 T），供呼叫端放編輯/刪除按鈕。
 export interface EntityTableColumn {
   key: string
   label: string
@@ -10,8 +12,26 @@ export interface EntityTableColumn {
 
 defineProps<{
   columns: EntityTableColumn[]
-  rows: Record<string, unknown>[]
+  rows: T[]
 }>()
+
+defineSlots<
+  Record<`cell-${string}`, (props: { row: T }) => unknown> & {
+    actions?: (props: { row: T }) => unknown
+  }
+>()
+
+// 內部索引存取集中在這裡：rows 的具體形狀由呼叫端的 T 決定，元件本身無法在編譯期
+// 保證每個 column.key 都存在於 T 上，因此只在此處做一次受控的型別放寬，
+// 避免每個呼叫端都要各自寫 `row as unknown as X`。
+function cellValue(row: T, key: string): unknown {
+  return (row as Record<string, unknown>)[key]
+}
+
+function rowKey(row: T, fallbackIndex: number): string | number {
+  const id = (row as Record<string, unknown>).id
+  return typeof id === 'string' || typeof id === 'number' ? id : fallbackIndex
+}
 </script>
 
 <template>
@@ -23,9 +43,9 @@ defineProps<{
       </tr>
     </thead>
     <tbody>
-      <tr v-for="(row, i) in rows" :key="(row.id as string | number | undefined) ?? i">
+      <tr v-for="(row, i) in rows" :key="rowKey(row, i)">
         <td v-for="col in columns" :key="col.key">
-          <slot :name="`cell-${col.key}`" :row="row">{{ row[col.key] }}</slot>
+          <slot :name="`cell-${col.key}`" :row="row">{{ cellValue(row, col.key) }}</slot>
         </td>
         <td v-if="$slots.actions" class="actions-col">
           <slot name="actions" :row="row" />

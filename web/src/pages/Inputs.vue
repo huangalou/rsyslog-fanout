@@ -36,6 +36,8 @@ async function load() {
   loading.value = true
   try {
     inputs.value = await api.get<Input[]>('/api/inputs')
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : '未知錯誤'
   } finally {
     loading.value = false
   }
@@ -83,8 +85,12 @@ async function submit() {
 
 async function removeInput(row: Input) {
   if (!confirm(`確定要刪除接收設定「${row.name}」？`)) return
-  await api.del(`/api/inputs/${row.id}`)
-  await load()
+  try {
+    await api.del(`/api/inputs/${row.id}`)
+    await load()
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : '未知錯誤'
+  }
 }
 
 onMounted(load)
@@ -132,10 +138,10 @@ onMounted(load)
 
     <p v-if="loading">載入中…</p>
     <EntityTable v-else :columns="columns" :rows="inputs">
-      <template #cell-enabled="{ row }">{{ (row as unknown as Input).enabled ? '是' : '否' }}</template>
+      <template #cell-enabled="{ row }">{{ row.enabled ? '是' : '否' }}</template>
       <template #actions="{ row }">
-        <button type="button" @click="openEdit(row as unknown as Input)">編輯</button>
-        <button type="button" @click="removeInput(row as unknown as Input)">刪除</button>
+        <button type="button" data-test="edit" @click="openEdit(row)">編輯</button>
+        <button type="button" data-test="delete" @click="removeInput(row)">刪除</button>
       </template>
     </EntityTable>
   </section>
