@@ -24,13 +24,17 @@ const condition = (r: RouteRule): string | null => {
 
 export function generateConf(cfg: FanoutConfig, opts: GenOpts): string {
   const L: string[] = []
+  const enabledInputs = cfg.inputs.filter((i) => i.enabled)
   L.push(`global(workDirectory="${opts.dataDir}/queues")`)
-  L.push('module(load="imudp")', 'module(load="imtcp")')
+  // 只在確實有對應協定的 enabled input 時才載入該接收模組；
+  // 若無條件載入（不論有無對應 input）rsyslogd -N1 會因「module loaded, but no
+  // listeners defined」而以非 0 退出，導致套用一律失敗（實機以真實 rsyslogd 驗證時發現）。
+  if (enabledInputs.some((i) => i.protocol === 'udp')) L.push('module(load="imudp")')
+  if (enabledInputs.some((i) => i.protocol === 'tcp')) L.push('module(load="imtcp")')
   L.push(`module(load="impstats" interval="10" format="json" resetCounters="off" log.file="${opts.dataDir}/stats/impstats.json" log.syslog="off")`)
   L.push('')
   L.push('template(name="t_raw" type="string" string="%rawmsg%")')
   L.push('template(name="t_std" type="string" string="<%pri%>%timestamp% %hostname% %syslogtag%%msg%")')
-  const enabledInputs = cfg.inputs.filter((i) => i.enabled)
   for (const i of enabledInputs)
     L.push(`template(name="t_tail_i${i.id}" type="string" string="{\\"src\\":\\"%fromhost-ip%\\",\\"input\\":${i.id},\\"fac\\":%syslogfacility%,\\"sev\\":%syslogseverity%,\\"msg\\":\\"%rawmsg:::json%\\"}")`)
   const destById = new Map(cfg.destinations.map((d) => [d.id, d]))

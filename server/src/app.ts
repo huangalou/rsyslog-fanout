@@ -28,7 +28,12 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   const app = Fastify()
   const sessions = makeSessions()
   app.register(cookie)
-  app.register(rateLimit, { max: 60, timeWindow: '1 minute' })
+  // 僅對 /api/* 套用全域速率限制：靜態資源（index.html、JS/CSS chunk、SPA fallback）
+  // 與 rate-limit 掛在同一個 fastify instance 上，若不排除，SPA 每次整頁導覽
+  // （非前端路由內部切換）都會重新拉整包資源，正常操作幾次就會把額度打完、
+  // 出現 429（實機以 Playwright 導覽多個頁面時發現）。/api/* 本身仍受限，
+  // 未削弱對登入等端點的保護。
+  app.register(rateLimit, { max: 60, timeWindow: '1 minute', allowList: (req) => !req.url.startsWith('/api/') })
   app.decorate('deps', deps)
   app.decorate('sessions', sessions)
 

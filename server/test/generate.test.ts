@@ -38,4 +38,24 @@ describe('generateConf', () => {
     expect(configHash(cfg)).toBe(configHash(structuredClone(cfg)))
     expect(configHash(cfg)).not.toBe(configHash({ ...cfg, routes: [] }))
   })
+  it('無 tcp input 時不載入 imtcp 模組（避免 rsyslogd -N1 因 no listeners defined 而失敗）', () => {
+    const out = generateConf(cfg, opts)
+    expect(out).toContain('module(load="imudp")')
+    expect(out).not.toContain('module(load="imtcp")')
+  })
+  it('無 udp input 時不載入 imudp 模組', () => {
+    const c = { ...cfg, inputs: [{ ...cfg.inputs[0], protocol: 'tcp' as const }] }
+    const out = generateConf(c, opts)
+    expect(out).toContain('module(load="imtcp")')
+    expect(out).not.toContain('module(load="imudp")')
+  })
+  it('同時有 udp 與 tcp input 時兩個模組都載入', () => {
+    const c = {
+      ...cfg,
+      inputs: [...cfg.inputs, { id: 2, name: 'tcp-net', protocol: 'tcp' as const, port: 1514, enabled: true }],
+    }
+    const out = generateConf(c, opts)
+    expect(out).toContain('module(load="imudp")')
+    expect(out).toContain('module(load="imtcp")')
+  })
 })
