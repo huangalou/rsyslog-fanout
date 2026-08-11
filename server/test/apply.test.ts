@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openDb } from '../src/db/db.js'
@@ -16,6 +16,10 @@ beforeEach(() => {
   repo.createInput({ name: 'n', protocol: 'udp', port: 514, enabled: true })
   dir = mkdtempSync(join(tmpdir(), 'fanout-'))
   paths = { staging: join(dir, 's.conf'), live: join(dir, 'l.conf'), backup: join(dir, 'b.conf') }
+})
+
+afterEach(() => {
+  rmSync(dir, { recursive: true, force: true })
 })
 
 describe('applyConfig', () => {
@@ -44,5 +48,29 @@ describe('applyConfig', () => {
     expect(existsSync(paths.live)).toBe(false)
     const r = await applyConfig({ repo, paths, genOpts, validate: okCmd, restart: okCmd })
     expect(r.applied).toBe(true)
+  })
+  it('首次套用時重啟失敗：留下破損 live、無備份可復原', async () => {
+    expect(existsSync(paths.live)).toBe(false)
+    let calls = 0
+    const restart = async () => ({ ok: false, output: 'restart failed' })
+    const r = await applyConfig({ repo, paths, genOpts, validate: okCmd, restart })
+    expect(r).toEqual({ applied: false, stage: 'restart', error: 'restart failed' })
+    expect(existsSync(paths.live)).toBe(true)
+    expect(readFileSync(paths.live, 'utf8')).toContain('rs_i1')
+  })
+  it('重啟 + 回滾重啟都失敗時回報雙重失敗', async () => {
+    writeFileSync(paths.live, 'OLD')
+    let calls = 0
+    const restart = async () => ({ ok: false, output: calls === 0 ? 'first crash' : 'rollback also crashed' })
+    const r = await applyConfig({ repo, paths, genOpts, validate: okCmd, restart: () => { calls++; return restart() } })
+    expect(r.applied).toBe(false)
+    expect(r.stage).toBe('restart')
+    expect(r.error).toContain('rollback restart also failed')
+  })
+  it('I/O 錯誤被捕捉並回傳 io 階段', async () => {
+    const r = await applyConfig({ repo, paths: { ...paths, staging: '/invalid/nonexist/path.conf' }, genOpts, validate: okCmd, restart: okCmd })
+    expect(r.applied).toBe(false)
+    expect(r.stage).toBe('io')
+    expect(r.error).toContain('ENOENT')
   })
 })
