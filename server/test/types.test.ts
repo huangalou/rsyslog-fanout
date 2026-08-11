@@ -21,6 +21,20 @@ describe('schemas', () => {
     const r = DestinationCreateSchema.parse({ name: 'd', protocol: 'udp', host: '10.0.0.5', port: 514, enabled: true })
     expect(r.headerMode).toBe('raw')
   })
+  it('host 含引號時拒絕（防止跳出 conf 屬性注入指令）', () => {
+    const r = DestinationCreateSchema.safeParse(
+      { name: 'd', protocol: 'udp', host: '1.2.3.4" x', port: 514, enabled: true })
+    expect(r.success).toBe(false)
+  })
+  it('host 含換行時拒絕（防止跳出 conf 屬性注入指令）', () => {
+    const r = DestinationCreateSchema.safeParse(
+      { name: 'd', protocol: 'udp', host: 'a\nb', port: 514, enabled: true })
+    expect(r.success).toBe(false)
+  })
+  it.each(['10.0.0.5', 'h', 'host.docker.internal'])('合法 hostname 通過：%s', (h) => {
+    const r = DestinationCreateSchema.safeParse({ name: 'd', protocol: 'udp', host: h, port: 514, enabled: true })
+    expect(r.success).toBe(true)
+  })
   it('route 的 sourceFilter 遮罩不支援時拒絕', () => {
     const r = RouteCreateSchema.safeParse({ inputId: 1, destinationId: 1, sourceFilter: '10.0.0.0/12', facilities: null, maxSeverity: null })
     expect(r.success).toBe(false)

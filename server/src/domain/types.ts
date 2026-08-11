@@ -34,8 +34,10 @@ const port = z.number().int().min(1).max(65535)
 const protocol = z.enum(['udp', 'tcp'])
 
 export const InputCreateSchema = z.object({ name, protocol, port, enabled: z.boolean() })
+const host = z.string().min(1).max(255)
+  .regex(/^[A-Za-z0-9.\-]+$/, '主機名稱僅允許字母、數字、點與連字號')
 export const DestinationCreateSchema = z.object({
-  name, protocol, host: z.string().min(1).max(255), port,
+  name, protocol, host, port,
   headerMode: z.enum(['raw', 'standard']).default('raw'), enabled: z.boolean(),
 })
 export const RouteCreateSchema = z.object({

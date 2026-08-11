@@ -74,12 +74,21 @@ sleep 1
 echo "== 透明轉發驗證 =="
 MSG='<134>Aug 11 13:00:00 testhost myapp[123]: transparency check 唯一標記'
 
-# 目的地模擬器：收 1 個 UDP 封包寫檔。macOS 的 nc（BSD 版）與 GNU netcat 的 -l 語法不同：
-# BSD: nc -u -l <port>／GNU netcat-traditional: nc -u -l -p <port>。依 OS 分支選擇語法。
+# 目的地模擬器：收 1 個 UDP 封包寫檔。macOS 的 nc（BSD 版）與 GNU netcat-traditional 的 -l 語法不同：
+# BSD/netcat-openbsd（macOS 內建，也是 Ubuntu 預設的 nc 實作）：nc -u -l <port>（純位置參數，
+#   -p 與 -l 併用在 BSD nc 是明確的錯誤——見 `man nc`「It is an error to use this option [-p]
+#   in conjunction with the -l option」）。
+# GNU netcat-traditional（Debian/Ubuntu 的 netcat-traditional 套件，非預設）：-l 需搭配
+#   -p <port>，且其 `nc -h` 的用法說明會出現連續的 "-l -p port" 字樣。
+#
+# 用 `-p` 是否存在來判斷是不可靠的：BSD nc 的 `-h` 輸出也會列出 `[-p source_port]`
+# （用於指定來源埠，與 -l 無關），單純 grep '-p' 幾乎必定命中，導致誤判成 GNU 分支、
+# 對 BSD nc 送出非法的 `-l -p` 組合而失敗。改成比對 "-l -p" 相鄰字樣，只有 GNU
+# netcat-traditional 的用法範例會這樣併排出現。
 if [ "$(uname -s)" = "Darwin" ]; then
   ( timeout 10 nc -u -l "$DEST_PORT" > "$OUT" & )
 else
-  if nc -h 2>&1 | grep -q -- '-p'; then
+  if nc -h 2>&1 | grep -qE -- '-l[[:space:]]+-p'; then
     ( timeout 10 nc -u -l -p "$DEST_PORT" > "$OUT" & )
   else
     ( timeout 10 nc -u -l "$DEST_PORT" > "$OUT" & )
