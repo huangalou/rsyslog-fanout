@@ -37,4 +37,26 @@ describe('repo', () => {
     repo.setAppliedHash('abc')
     expect(repo.getAppliedHash()).toBe('abc')
   })
+  it('createRoute 指向不存在的 input 時丟出明確錯誤', () => {
+    const d = repo.createDestination({ name: 'd', protocol: 'udp', host: 'h', port: 1, headerMode: 'raw', enabled: true })
+    expect(() => {
+      repo.createRoute({ inputId: 999, destinationId: d.id, sourceFilter: null, facilities: null, maxSeverity: null })
+    }).toThrow('input 不存在')
+  })
+  it('createRoute 指向不存在的 destination 時丟出明確錯誤', () => {
+    const i = repo.createInput({ name: 'n', protocol: 'udp', port: 514, enabled: true })
+    expect(() => {
+      repo.createRoute({ inputId: i.id, destinationId: 999, sourceFilter: null, facilities: null, maxSeverity: null })
+    }).toThrow('destination 不存在')
+  })
+  it('解構 getConfig 後呼叫仍正常', () => {
+    const i = repo.createInput({ name: 'n', protocol: 'udp', port: 514, enabled: true })
+    const d = repo.createDestination({ name: 'd', protocol: 'udp', host: 'h', port: 1, headerMode: 'raw', enabled: true })
+    repo.createRoute({ inputId: i.id, destinationId: d.id, sourceFilter: null, facilities: null, maxSeverity: null })
+    const { getConfig } = repo
+    const config = getConfig()
+    expect(config.inputs).toHaveLength(1)
+    expect(config.destinations).toHaveLength(1)
+    expect(config.routes).toHaveLength(1)
+  })
 })
