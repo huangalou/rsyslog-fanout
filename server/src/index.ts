@@ -28,7 +28,7 @@ async function main() {
   const hub = createHub({ staleAfterMs: Number(process.env.FANOUT_STALE_MINUTES ?? 10) * 60 * 1000 })
   const tail = createTailListener(hub, { port: env.tailPort })
   await tail.start()
-  createImpstatsReader(join(env.dataDir, 'stats/impstats.json'), hub).start()
+  createImpstatsReader(join(env.dataDir, 'stats/impstats.json'), hub, undefined, (m) => console.error(m)).start()
 
   const paths = {
     staging: join(env.dataDir, 'rsyslog/staging.conf'),
