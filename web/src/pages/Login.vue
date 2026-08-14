@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useSession } from '../stores/session'
+import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+const { t } = useI18n()
 const pw = ref('')
 const err = ref('')
 const router = useRouter()
@@ -20,9 +23,10 @@ async function submit() {
   <main class="login">
     <form @submit.prevent="submit" aria-labelledby="login-title">
       <h1 id="login-title">Rsyslog FanOut</h1>
-      <input v-model="pw" type="password" placeholder="管理密碼" autocomplete="current-password" />
-      <button type="submit">登入</button>
+      <input v-model="pw" type="password" :placeholder="t('login.passwordPlaceholder')" autocomplete="current-password" />
+      <button type="submit">{{ t('login.submit') }}</button>
       <p v-if="err" role="alert" class="error">{{ err }}</p>
+      <LanguageSwitcher class="login-lang" />
     </form>
   </main>
 </template>
@@ -91,5 +95,9 @@ async function submit() {
   font-size: 0.875rem;
   color: var(--color-danger);
   margin: 0;
+}
+
+.login-lang {
+  align-self: flex-end;
 }
 </style>

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 export interface LineChartPoint {
   ts: number
@@ -44,12 +47,12 @@ const scaled = computed(() => {
 
 <template>
   <div class="line-chart">
-    <svg v-if="scaled" viewBox="0 0 640 160" preserveAspectRatio="none" role="img" aria-label="流量走勢圖">
+    <svg v-if="scaled" viewBox="0 0 640 160" preserveAspectRatio="none" role="img" :aria-label="t('chart.ariaLabel')">
       <line x1="12" y1="80" x2="628" y2="80" class="gridline" />
       <polygon :points="scaled.area" class="area" :class="{ visible: mounted }" />
       <polyline :points="scaled.line" class="line" :class="{ visible: mounted }" />
     </svg>
-    <p v-else class="empty">尚無資料</p>
+    <p v-else class="empty">{{ t('chart.empty') }}</p>
   </div>
 </template>
 

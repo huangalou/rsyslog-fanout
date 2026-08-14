@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useStats } from './stores/stats'
+import LanguageSwitcher from './components/LanguageSwitcher.vue'
 
 // dirty 徽章讀取 useStats().dirty；輪詢本身只在 Dashboard 掛載期間執行
 // （stats.start()/stop() 綁定 Dashboard 的 onMounted/onUnmounted）。
@@ -13,13 +15,14 @@ const dirty = computed(() => stats.dirty)
 const route = useRoute()
 const isLoginPage = computed(() => route.path === '/login')
 
-const navItems = [
-  { path: '/', label: 'Dashboard' },
-  { path: '/inputs', label: '接收設定' },
-  { path: '/forwarding', label: '轉發設定' },
-  { path: '/tail', label: 'Live Tail' },
-  { path: '/sources', label: '來源狀態' },
-]
+const { t } = useI18n()
+const navItems = computed(() => [
+  { path: '/', label: t('nav.dashboard') },
+  { path: '/inputs', label: t('nav.inputs') },
+  { path: '/forwarding', label: t('nav.forwarding') },
+  { path: '/tail', label: t('nav.tail') },
+  { path: '/sources', label: t('nav.sources') },
+])
 </script>
 
 <template>
@@ -27,7 +30,7 @@ const navItems = [
   <div v-else class="shell">
     <aside class="sidebar">
       <div class="brand">Rsyslog FanOut</div>
-      <nav aria-label="主導覽">
+      <nav :aria-label="t('nav.main')">
         <RouterLink v-for="item in navItems" :key="item.path" :to="item.path" class="nav-link">
           {{ item.label }}
         </RouterLink>
@@ -35,7 +38,8 @@ const navItems = [
     </aside>
     <div class="main">
       <header class="topbar">
-        <span v-if="dirty" class="badge-dirty" role="status">未套用變更</span>
+        <span v-if="dirty" class="badge-dirty" role="status">{{ t('app.dirtyBadge') }}</span>
+        <LanguageSwitcher />
       </header>
       <main class="content">
         <RouterView />
@@ -105,6 +109,7 @@ const navItems = [
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: var(--space-md);
   padding: 0 var(--space-lg);
   border-bottom: 1px solid var(--color-border);
 }

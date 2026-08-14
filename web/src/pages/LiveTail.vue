@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Live Tail：訂閱 WS 的 tail 事件並即時捲動顯示（Task 15）。
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { api } from '../api/client'
 import { connectWs } from '../api/ws'
 import { useTail, type TailMsg } from '../stores/tail'
@@ -9,6 +10,8 @@ interface Input {
   id: number
   name: string
 }
+
+const { t, locale } = useI18n()
 
 const SEVERITY_NAMES = ['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug']
 
@@ -23,7 +26,7 @@ function severityLabel(sev: number): string {
 }
 
 function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString('zh-TW', { hour12: false })
+  return new Date(ts).toLocaleTimeString(locale.value, { hour12: false })
 }
 
 const tail = useTail()
@@ -87,19 +90,19 @@ const filterValue = computed({
 
     <div class="toolbar">
       <label class="filter-label">
-        接收來源過濾
+        {{ t('livetail.filterLabel') }}
         <select data-test="filter-input" v-model="filterValue">
-          <option value="">（全部）</option>
+          <option value="">{{ t('livetail.all') }}</option>
           <option v-for="i in inputs" :key="i.id" :value="String(i.id)">{{ i.name }}</option>
         </select>
       </label>
       <button type="button" data-test="pause-toggle" @click="togglePaused">
-        {{ tail.paused ? '繼續' : '暫停' }}
+        {{ tail.paused ? t('livetail.resume') : t('livetail.pause') }}
       </button>
     </div>
 
     <div ref="scrollEl" class="tail-scroll" data-test="tail-scroll">
-      <p v-if="tail.visible.length === 0" class="empty">尚無訊息</p>
+      <p v-if="tail.visible.length === 0" class="empty">{{ t('livetail.empty') }}</p>
       <div v-for="(line, i) in tail.visible" :key="i" class="tail-line">
         <span class="ts">{{ formatTime(line.ts) }}</span>
         <span class="src">{{ line.src }}</span>

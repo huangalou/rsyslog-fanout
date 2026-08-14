@@ -15,7 +15,7 @@ afterAll(() => {
   for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true })
 })
 
-export function makeTestApp(): FastifyInstance {
+export function makeTestApp(opts?: { validateOutput?: string }): FastifyInstance {
   const repo = createRepo(openDb(':memory:'))
   repo.setPasswordHash(bcrypt.hashSync('secret', 10))
   const dir = mkdtempSync(join(tmpdir(), 'fanout-test-'))
@@ -28,7 +28,8 @@ export function makeTestApp(): FastifyInstance {
         repo,
         paths,
         genOpts: { tailPort: 15514, dataDir: '/tmp/fanout-test' },
-        validate: async () => ({ ok: true, output: '' }),
+        validate: async () =>
+          opts?.validateOutput !== undefined ? { ok: false, output: opts.validateOutput } : { ok: true, output: '' },
         restart: async () => ({ ok: true, output: '' }),
       }),
     monitor: { snapshot: () => ({ inputs: {}, actions: {}, sources: [] }), onStats: () => () => {}, onTail: () => () => {} },
@@ -50,13 +51,15 @@ describe('auth', () => {
     expect(r.cookies[0].name).toBe('fanout_session')
     expect(r.cookies[0].httpOnly).toBe(true)
   })
-  it('錯誤密碼 401', async () => {
+  it('錯誤密碼 401、錯誤碼 PASSWORD_INCORRECT', async () => {
     const r = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { password: 'wrong' } })
     expect(r.statusCode).toBe(401)
+    expect(r.json().error.code).toBe('PASSWORD_INCORRECT')
   })
-  it('未登入存取 API 401', async () => {
+  it('未登入存取 API 401、錯誤碼 UNAUTHENTICATED', async () => {
     const r = await app.inject({ method: 'GET', url: '/api/inputs' })
     expect(r.statusCode).toBe(401)
+    expect(r.json().error.code).toBe('UNAUTHENTICATED')
   })
   it('登入後可改密碼並以新密碼登入', async () => {
     const tok = await login(app)

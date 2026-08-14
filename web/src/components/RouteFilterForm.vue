@@ -3,6 +3,9 @@
 // 由 RouteMatrix 的「⚙」按鈕開啟；儲存/取消由呼叫端（Forwarding.vue）決定實際 API 呼叫，
 // 本元件只負責蒐集輸入值並以 emit 交出。
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 export interface RouteFilterValue {
   sourceFilter: string | null
@@ -40,25 +43,25 @@ function submit() {
 <template>
   <form class="filter-form" @submit.prevent="submit">
     <label>
-      來源過濾（sourceFilter）
-      <input data-test="filter-source" v-model="sourceFilter" type="text" placeholder="10.1.2.3 或 10.1.0.0/16" />
+      {{ t('routeFilter.sourceFilter') }}
+      <input data-test="filter-source" v-model="sourceFilter" type="text" :placeholder="t('routeFilter.sourcePlaceholder')" />
     </label>
     <label>
-      設施（facilities）
+      {{ t('routeFilter.facilities') }}
       <select data-test="filter-facilities" v-model.number="facilities" multiple size="6">
         <option v-for="(fname, idx) in FACILITY_NAMES" :key="idx" :value="idx">{{ idx }} {{ fname }}</option>
       </select>
     </label>
     <label>
-      最高嚴重度（maxSeverity）
+      {{ t('routeFilter.maxSeverity') }}
       <select data-test="filter-severity" v-model="maxSeverity">
-        <option value="">（不限制）</option>
+        <option value="">{{ t('routeFilter.noLimit') }}</option>
         <option v-for="(sname, idx) in SEVERITY_NAMES" :key="idx" :value="idx">{{ sname }}({{ idx }})</option>
       </select>
     </label>
     <div class="filter-form-actions">
-      <button type="submit">儲存</button>
-      <button type="button" @click="emit('cancel')">取消</button>
+      <button type="submit">{{ t('common.save') }}</button>
+      <button type="button" @click="emit('cancel')">{{ t('common.cancel') }}</button>
     </div>
   </form>
 </template>

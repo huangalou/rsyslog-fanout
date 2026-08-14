@@ -35,7 +35,7 @@ const protocol = z.enum(['udp', 'tcp'])
 
 export const InputCreateSchema = z.object({ name, protocol, port, enabled: z.boolean() })
 const host = z.string().min(1).max(255)
-  .regex(/^[A-Za-z0-9.\-]+$/, '主機名稱僅允許字母、數字、點與連字號')
+  .regex(/^[A-Za-z0-9.\-]+$/, 'HOST_FORMAT')
 export const DestinationCreateSchema = z.object({
   name, protocol, host, port,
   headerMode: z.enum(['raw', 'standard']).default('raw'), enabled: z.boolean(),
@@ -44,7 +44,7 @@ export const RouteCreateSchema = z.object({
   inputId: z.number().int().positive(),
   destinationId: z.number().int().positive(),
   sourceFilter: z.string().nullable().refine((v) => v === null || cidrToPrefix(v) !== null,
-    { message: '僅接受完整 IP 或 /8、/16、/24 CIDR' }),
+    { message: 'SOURCE_FILTER_FORMAT' }),
   facilities: z.array(z.number().int().min(0).max(23)).nullable(),
   maxSeverity: z.number().int().min(0).max(7).nullable(),
 })

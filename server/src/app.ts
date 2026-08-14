@@ -40,7 +40,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.addHook('preHandler', async (req, reply) => {
     if (req.url === '/api/auth/login' || req.url === '/api/health' || !req.url.startsWith('/api/')) return
     const tok = req.cookies['fanout_session']
-    if (!tok || !sessions.valid(tok)) return reply.code(401).send(fail('未登入'))
+    if (!tok || !sessions.valid(tok)) return reply.code(401).send(fail('UNAUTHENTICATED'))
   })
 
   app.get('/api/health', async () => ({ status: 'ok' }))
