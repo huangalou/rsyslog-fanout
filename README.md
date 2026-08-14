@@ -10,7 +10,8 @@ A containerized syslog fan-out (one-in, many-out relay) tool with a WebUI — bu
 
 ```bash
 git clone https://github.com/huangalou/rsyslog-fanout.git && cd rsyslog-fanout
-export FANOUT_ADMIN_PASSWORD=change-me-please
+export FANOUT_ADMIN_PASSWORD=$(openssl rand -base64 12)
+echo "Admin password: $FANOUT_ADMIN_PASSWORD"   # note it down — you'll need it to log in
 cd docker && docker compose up -d --build
 ```
 
@@ -27,6 +28,18 @@ Open `http://localhost:8080`, log in with the password you set above, then confi
 | **Route** | An Input → Destination mapping, with optional filters: source IP/CIDR, facility (multi-select), minimum severity. No filter = forward everything. |
 
 Changes are saved as drafts in SQLite; nothing takes effect on the wire until you click **Apply**, which generates a new rsyslog config, validates it (`rsyslogd -N1`), swaps it in, and restarts rsyslogd — rolling back automatically if the new config fails to start.
+
+## WebUI Language
+
+The WebUI is bilingual (English / Traditional Chinese). The initial language follows the browser's language (`zh*` → 繁體中文, anything else → English); a switcher in the top bar (and on the login page) overrides it, and the choice is persisted in `localStorage`.
+
+API error responses carry a stable machine-readable code so the UI can localize them:
+
+```json
+{ "success": false, "data": null, "error": { "code": "PORT_OUT_OF_RANGE", "message": "Port 9999 is outside the allowed range (FANOUT_PORT_RANGE=514...)", "params": { "port": 9999, "range": "FANOUT_PORT_RANGE=514..." } } }
+```
+
+`message` is always English (for `curl`/programmatic use); the WebUI translates known `code`s into the active language.
 
 ## Port Range
 

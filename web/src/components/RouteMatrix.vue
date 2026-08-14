@@ -4,6 +4,10 @@
 // 每格旁的「⚙」開啟 RouteFilterForm 設定該 route 的 sourceFilter/facilities/maxSeverity；
 // 已設定過濾條件的格子額外顯示濾鏡圖示。
 // 本元件不直接呼叫 API：所有變更以 emit 交給 Forwarding.vue，維持單一資料流向與可測試性。
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 interface Input {
   id: number
   name: string
@@ -68,12 +72,12 @@ function onToggle(inputId: number, destinationId: number, event: Event) {
             type="button"
             class="gear"
             :data-test="`gear-${input.id}-${dest.id}`"
-            title="設定過濾條件"
+            :title="t('routeMatrix.setFilter')"
             @click="emit('edit-filter', input.id, dest.id)"
           >
             ⚙
           </button>
-          <span v-if="hasFilter(findRoute(input.id, dest.id))" class="filter-icon" title="已設定過濾條件">🔍</span>
+          <span v-if="hasFilter(findRoute(input.id, dest.id))" class="filter-icon" :title="t('routeMatrix.hasFilter')">🔍</span>
         </td>
       </tr>
     </tbody>

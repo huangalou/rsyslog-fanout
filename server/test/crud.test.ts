@@ -22,20 +22,30 @@ describe('inputs CRUD', () => {
     const d = await app.inject({ method: 'DELETE', url: `/api/inputs/${id}`, cookies: cookie })
     expect(d.statusCode).toBe(200)
   })
-  it('埠號不在允許範圍 → 400 與明確錯誤', async () => {
+  it('埠號不在允許範圍 → 400、錯誤碼 PORT_OUT_OF_RANGE 帶 params', async () => {
     const r = await post('/api/inputs', { name: 'n', protocol: 'udp', port: 9999, enabled: true })
     expect(r.statusCode).toBe(400)
-    expect(r.json().error).toContain('允許範圍')
+    expect(r.json().error.code).toBe('PORT_OUT_OF_RANGE')
+    expect(r.json().error.params.port).toBe(9999)
+    expect(r.json().error.message).toContain('9999')
   })
-  it('同協定同埠重複 → 400', async () => {
+  it('同協定同埠重複 → 400、錯誤碼 PORT_IN_USE', async () => {
     await post('/api/inputs', { name: 'a', protocol: 'udp', port: 514, enabled: true })
     const r = await post('/api/inputs', { name: 'b', protocol: 'udp', port: 514, enabled: true })
     expect(r.statusCode).toBe(400)
+    expect(r.json().error.code).toBe('PORT_IN_USE')
   })
-  it('zod 驗證失敗 → 400 envelope', async () => {
+  it('zod 驗證失敗 → 400、錯誤碼 VALIDATION 帶 zod 訊息', async () => {
     const r = await post('/api/inputs', { name: '', protocol: 'x', port: 514, enabled: true })
     expect(r.statusCode).toBe(400)
     expect(r.json().success).toBe(false)
+    expect(r.json().error.code).toBe('VALIDATION')
+    expect(typeof r.json().error.message).toBe('string')
+  })
+  it('刪除不存在資源 → 404、錯誤碼 NOT_FOUND', async () => {
+    const r = await app.inject({ method: 'DELETE', url: '/api/inputs/999', cookies: cookie })
+    expect(r.statusCode).toBe(404)
+    expect(r.json().error.code).toBe('NOT_FOUND')
   })
 })
 
@@ -80,6 +90,26 @@ describe('routes + config', () => {
     const del = await app.inject({ method: 'DELETE', url: `/api/routes/${id}`, cookies: cookie })
     expect(del.statusCode).toBe(200)
     expect((await app.inject({ url: '/api/routes', cookies: cookie })).json().data).toHaveLength(0)
+  })
+  it('destination host 格式非法 → 400、錯誤碼 HOST_FORMAT', async () => {
+    const r = await post('/api/destinations', { name: 'd', protocol: 'udp', host: 'bad host!', port: 514, enabled: true })
+    expect(r.statusCode).toBe(400)
+    expect(r.json().error.code).toBe('HOST_FORMAT')
+  })
+  it('route sourceFilter 非法 CIDR → 400、錯誤碼 SOURCE_FILTER_FORMAT', async () => {
+    const r = await post('/api/routes', { inputId: 1, destinationId: 1, sourceFilter: '10.0.0.0/12', facilities: null, maxSeverity: null })
+    expect(r.statusCode).toBe(400)
+    expect(r.json().error.code).toBe('SOURCE_FILTER_FORMAT')
+  })
+  it('apply 失敗 → 錯誤碼 APPLY_FAILED、message 帶 rsyslog 輸出', async () => {
+    const failApp = makeTestApp({ validateOutput: 'syntax err on line 3' })
+    const login = await failApp.inject({ method: 'POST', url: '/api/auth/login', payload: { password: 'secret' } })
+    const failCookie = { fanout_session: login.cookies[0].value }
+    await failApp.inject({ method: 'POST', url: '/api/inputs', payload: { name: 'n', protocol: 'udp', port: 514, enabled: true }, cookies: failCookie })
+    const r = await failApp.inject({ method: 'POST', url: '/api/config/apply', payload: {}, cookies: failCookie })
+    expect(r.json().success).toBe(false)
+    expect(r.json().error.code).toBe('APPLY_FAILED')
+    expect(r.json().error.message).toContain('syntax err on line 3')
   })
   it('config status：初始 dirty、apply 後乾淨', async () => {
     await post('/api/inputs', { name: 'n', protocol: 'udp', port: 514, enabled: true })

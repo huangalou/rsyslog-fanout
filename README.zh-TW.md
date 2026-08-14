@@ -10,7 +10,8 @@
 
 ```bash
 git clone https://github.com/huangalou/rsyslog-fanout.git && cd rsyslog-fanout
-export FANOUT_ADMIN_PASSWORD=change-me-please
+export FANOUT_ADMIN_PASSWORD=$(openssl rand -base64 12)
+echo "管理密碼: $FANOUT_ADMIN_PASSWORD"   # 記下來,登入時要用
 cd docker && docker compose up -d --build
 ```
 
@@ -27,6 +28,18 @@ cd docker && docker compose up -d --build
 | **Route（路由規則）** | Input → Destination 的對應，可選過濾條件：來源 IP/CIDR、facility（多選）、最低 severity。不設過濾即全轉。 |
 
 修改先存入 SQLite 作為草稿，在按下**套用**前不會影響實際收發。套用會產生新的 rsyslog 設定、驗證（`rsyslogd -N1`）、換上新設定並重啟 rsyslogd——若新設定啟動失敗會自動回滾。
+
+## WebUI 語言
+
+WebUI 支援雙語（英文 / 繁體中文）。初始語言依瀏覽器語言自動判斷（`zh*` → 繁體中文，其他 → 英文）；頂欄（與登入頁）的切換器可手動切換，選擇會存在 `localStorage`。
+
+API 錯誤回應帶有穩定的機器可讀錯誤碼，讓 UI 依語系翻譯：
+
+```json
+{ "success": false, "data": null, "error": { "code": "PORT_OUT_OF_RANGE", "message": "Port 9999 is outside the allowed range (FANOUT_PORT_RANGE=514...)", "params": { "port": 9999, "range": "FANOUT_PORT_RANGE=514..." } } }
+```
+
+`message` 一律為英文（供 `curl` / 程式化使用）；WebUI 會把已知的 `code` 翻成當前語言。
 
 ## 埠範圍限制
 

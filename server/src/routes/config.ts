@@ -8,7 +8,7 @@ let lastResult: ApplyResult | null = null
 export async function configRoutes(app: FastifyInstance) {
   app.post('/api/config/apply', async () => {
     lastResult = await app.deps.apply()
-    return lastResult.applied ? ok(lastResult) : { success: false, data: lastResult, error: lastResult.error }
+    return lastResult.applied ? ok(lastResult) : fail('APPLY_FAILED', undefined, lastResult.error)
   })
   app.get('/api/config/status', async () => {
     const { repo } = app.deps

@@ -1,16 +1,18 @@
 <script setup lang="ts">
 // 來源狀態頁：列出 stats store 的 sources 快照（Task 15）。
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useStats } from '../stores/stats'
 import EntityTable, { type EntityTableColumn } from '../components/EntityTable.vue'
 
+const { t } = useI18n()
 const stats = useStats()
 
-const columns: EntityTableColumn[] = [
+const columns = computed<EntityTableColumn[]>(() => [
   { key: 'ip', label: 'IP' },
-  { key: 'lastSeen', label: '最後收到' },
-  { key: 'stale', label: '狀態' },
-]
+  { key: 'lastSeen', label: t('sources.lastSeen') },
+  { key: 'stale', label: t('sources.statusCol') },
+])
 
 const sortedSources = computed(() => [...(stats.snapshot?.sources ?? [])].sort((a, b) => b.lastSeen - a.lastSeen))
 
@@ -20,12 +22,12 @@ let timer: ReturnType<typeof setInterval> | null = null
 
 function relativeTime(ts: number): string {
   const diffSec = Math.max(0, Math.floor((now.value - ts) / 1000))
-  if (diffSec < 60) return `${diffSec} 秒前`
+  if (diffSec < 60) return t('sources.secondsAgo', { n: diffSec })
   const diffMin = Math.floor(diffSec / 60)
-  if (diffMin < 60) return `${diffMin} 分鐘前`
+  if (diffMin < 60) return t('sources.minutesAgo', { n: diffMin })
   const diffHour = Math.floor(diffMin / 60)
-  if (diffHour < 24) return `${diffHour} 小時前`
-  return `${Math.floor(diffHour / 24)} 天前`
+  if (diffHour < 24) return t('sources.hoursAgo', { n: diffHour })
+  return t('sources.daysAgo', { n: Math.floor(diffHour / 24) })
 }
 
 onMounted(() => {
@@ -44,17 +46,17 @@ onUnmounted(() => {
 
 <template>
   <section class="page">
-    <h1>來源狀態</h1>
+    <h1>{{ t('sources.title') }}</h1>
 
     <EntityTable :columns="columns" :rows="sortedSources">
       <template #cell-lastSeen="{ row }">{{ relativeTime(row.lastSeen) }}</template>
       <template #cell-stale="{ row }">
-        <span v-if="row.stale" class="badge-stale" data-test="stale-badge">疑似斷訊</span>
-        <span v-else class="badge-ok">正常</span>
+        <span v-if="row.stale" class="badge-stale" data-test="stale-badge">{{ t('sources.stale') }}</span>
+        <span v-else class="badge-ok">{{ t('sources.ok') }}</span>
       </template>
     </EntityTable>
 
-    <p v-if="sortedSources.length === 0" class="empty">尚無來源資料</p>
+    <p v-if="sortedSources.length === 0" class="empty">{{ t('sources.empty') }}</p>
   </section>
 </template>
 

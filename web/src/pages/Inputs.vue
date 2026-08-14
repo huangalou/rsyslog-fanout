@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { api, ApiError } from '../api/client'
 import EntityTable, { type EntityTableColumn } from '../components/EntityTable.vue'
+
+const { t } = useI18n()
 
 type Protocol = 'udp' | 'tcp'
 interface Input {
@@ -12,12 +15,12 @@ interface Input {
   enabled: boolean
 }
 
-const columns: EntityTableColumn[] = [
-  { key: 'name', label: '名稱' },
-  { key: 'protocol', label: '協定' },
-  { key: 'port', label: '埠號' },
-  { key: 'enabled', label: '啟用' },
-]
+const columns = computed<EntityTableColumn[]>(() => [
+  { key: 'name', label: t('common.name') },
+  { key: 'protocol', label: t('common.protocol') },
+  { key: 'port', label: t('common.port') },
+  { key: 'enabled', label: t('common.enabled') },
+])
 
 const inputs = ref<Input[]>([])
 const loading = ref(false)
@@ -37,7 +40,7 @@ async function load() {
   try {
     inputs.value = await api.get<Input[]>('/api/inputs')
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : '未知錯誤'
+    errorMsg.value = e instanceof Error ? e.message : t('common.unknownError')
   } finally {
     loading.value = false
   }
@@ -79,17 +82,17 @@ async function submit() {
     closeForm()
     await load()
   } catch (e) {
-    errorMsg.value = e instanceof ApiError || e instanceof Error ? e.message : '未知錯誤'
+    errorMsg.value = e instanceof ApiError || e instanceof Error ? e.message : t('common.unknownError')
   }
 }
 
 async function removeInput(row: Input) {
-  if (!confirm(`確定要刪除接收設定「${row.name}」？`)) return
+  if (!confirm(t('inputs.confirmDelete', { name: row.name }))) return
   try {
     await api.del(`/api/inputs/${row.id}`)
     await load()
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : '未知錯誤'
+    errorMsg.value = e instanceof Error ? e.message : t('common.unknownError')
   }
 }
 
@@ -98,13 +101,13 @@ onMounted(load)
 
 <template>
   <section class="page">
-    <h1>接收設定</h1>
+    <h1>{{ t('inputs.title') }}</h1>
     <p class="hint">
-      允許的監聽埠範圍由環境變數 <code>FANOUT_PORT_RANGE</code> 決定，需與 docker-compose 對外發布的埠一致（預設 514、5140-5199）。
+      {{ t('inputs.hintBefore') }}<code>FANOUT_PORT_RANGE</code>{{ t('inputs.hintAfter') }}
     </p>
 
     <div class="toolbar">
-      <button type="button" data-test="add" @click="openAdd">新增接收設定</button>
+      <button type="button" data-test="add" @click="openAdd">{{ t('inputs.addButton') }}</button>
     </div>
 
     <p v-if="errorMsg && !showForm" role="alert" class="error">{{ errorMsg }}</p>
@@ -112,36 +115,36 @@ onMounted(load)
     <form v-if="showForm" @submit.prevent="submit" class="entity-form">
       <p v-if="errorMsg" role="alert" class="error">{{ errorMsg }}</p>
       <label>
-        名稱
+        {{ t('common.name') }}
         <input data-test="name" v-model="form.name" type="text" required />
       </label>
       <label>
-        協定
+        {{ t('common.protocol') }}
         <select data-test="protocol" v-model="form.protocol">
           <option value="udp">udp</option>
           <option value="tcp">tcp</option>
         </select>
       </label>
       <label>
-        埠號
+        {{ t('common.port') }}
         <input data-test="port" v-model.number="form.port" type="number" min="1" max="65535" required />
       </label>
       <label class="toggle">
         <input data-test="enabled" v-model="form.enabled" type="checkbox" />
-        啟用
+        {{ t('common.enabled') }}
       </label>
       <div class="form-actions">
-        <button type="submit">{{ editingId !== null ? '儲存' : '新增' }}</button>
-        <button type="button" @click="closeForm">取消</button>
+        <button type="submit">{{ editingId !== null ? t('common.save') : t('common.add') }}</button>
+        <button type="button" @click="closeForm">{{ t('common.cancel') }}</button>
       </div>
     </form>
 
-    <p v-if="loading">載入中…</p>
+    <p v-if="loading">{{ t('common.loading') }}</p>
     <EntityTable v-else :columns="columns" :rows="inputs">
-      <template #cell-enabled="{ row }">{{ row.enabled ? '是' : '否' }}</template>
+      <template #cell-enabled="{ row }">{{ row.enabled ? t('common.yes') : t('common.no') }}</template>
       <template #actions="{ row }">
-        <button type="button" data-test="edit" @click="openEdit(row)">編輯</button>
-        <button type="button" data-test="delete" @click="removeInput(row)">刪除</button>
+        <button type="button" data-test="edit" @click="openEdit(row)">{{ t('common.edit') }}</button>
+        <button type="button" data-test="delete" @click="removeInput(row)">{{ t('common.delete') }}</button>
       </template>
     </EntityTable>
   </section>

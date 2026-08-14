@@ -27,7 +27,7 @@ export async function authRoutes(app: FastifyInstance) {
     const body = z.object({ password: z.string() }).safeParse(req.body)
     const hash = app.deps.repo.getPasswordHash()
     if (!body.success || !hash || !bcrypt.compareSync(body.data.password, hash))
-      return reply.code(401).send(fail('密碼錯誤'))
+      return reply.code(401).send(fail('PASSWORD_INCORRECT'))
     const tok = app.sessions.create()
     reply.setCookie('fanout_session', tok, { httpOnly: true, sameSite: 'strict', path: '/' })
     return ok({ loggedIn: true })
@@ -39,7 +39,7 @@ export async function authRoutes(app: FastifyInstance) {
   })
   app.put('/api/auth/password', async (req, reply) => {
     const body = PasswordSchema.safeParse(req.body)
-    if (!body.success) return reply.code(400).send(fail('密碼長度需 8-128 字元'))
+    if (!body.success) return reply.code(400).send(fail('PASSWORD_LENGTH'))
     app.deps.repo.setPasswordHash(bcrypt.hashSync(body.data.password, 10))
     return ok({ changed: true })
   })

@@ -2,7 +2,8 @@
 // 轉發設定頁：Destinations（CRUD）+ Routes（RouteMatrix 勾選建/刪 route，⚙ 設定過濾條件）+ 套用設定。
 // routes 沒有 PUT 端點（見 server/src/routes/crud.ts），編輯既有 route 的過濾條件
 // 因此實作為「刪除舊 route、以新過濾條件建立同一組 inputId/destinationId 的新 route」。
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { api, ApiError } from '../api/client'
 import EntityTable, { type EntityTableColumn } from '../components/EntityTable.vue'
 import RouteMatrix from '../components/RouteMatrix.vue'
@@ -45,13 +46,15 @@ interface ConfigStatus {
   lastResult: ApplyResult | null
 }
 
-const destColumns: EntityTableColumn[] = [
-  { key: 'name', label: '名稱' },
-  { key: 'protocol', label: '協定' },
-  { key: 'hostPort', label: '主機:埠' },
-  { key: 'headerMode', label: '表頭模式' },
-  { key: 'enabled', label: '啟用' },
-]
+const { t } = useI18n()
+
+const destColumns = computed<EntityTableColumn[]>(() => [
+  { key: 'name', label: t('common.name') },
+  { key: 'protocol', label: t('common.protocol') },
+  { key: 'hostPort', label: t('forwarding.hostPortCol') },
+  { key: 'headerMode', label: t('forwarding.headerMode') },
+  { key: 'enabled', label: t('common.enabled') },
+])
 
 const inputs = ref<Input[]>([])
 const destinations = ref<Destination[]>([])
@@ -122,17 +125,17 @@ async function submitDest() {
     closeDestForm()
     await loadDestinations()
   } catch (e) {
-    destErrorMsg.value = e instanceof ApiError || e instanceof Error ? e.message : '未知錯誤'
+    destErrorMsg.value = e instanceof ApiError || e instanceof Error ? e.message : t('common.unknownError')
   }
 }
 
 async function removeDest(row: Destination) {
-  if (!confirm(`確定要刪除目的地「${row.name}」？`)) return
+  if (!confirm(t('forwarding.confirmDeleteDest', { name: row.name }))) return
   try {
     await api.del(`/api/destinations/${row.id}`)
     await loadDestinations()
   } catch (e) {
-    destErrorMsg.value = e instanceof Error ? e.message : '未知錯誤'
+    destErrorMsg.value = e instanceof Error ? e.message : t('common.unknownError')
   }
 }
 
@@ -161,7 +164,7 @@ async function onToggleRoute(inputId: number, destinationId: number, checked: bo
     }
     await loadRoutes()
   } catch (e) {
-    routeErrorMsg.value = e instanceof Error ? e.message : '未知錯誤'
+    routeErrorMsg.value = e instanceof Error ? e.message : t('common.unknownError')
   }
 }
 
@@ -197,10 +200,10 @@ async function saveFilter(value: RouteFilterValue) {
     // 本地 routes 狀態會與後端不一致，因此無論成功或失敗都要 reload 讓畫面對齊後端真實狀態，
     // 並提示使用者原本的過濾條件已被移除、需要重新設定。
     routeErrorMsg.value = existing
-      ? `更新過濾條件失敗，原有路由已被移除，請重新設定：${e instanceof Error ? e.message : '未知錯誤'}`
+      ? t('forwarding.filterUpdateFailed', { error: e instanceof Error ? e.message : t('common.unknownError') })
       : e instanceof Error
         ? e.message
-        : '未知錯誤'
+        : t('common.unknownError')
   } finally {
     await loadRoutes()
   }
@@ -220,7 +223,7 @@ async function applyConfig() {
     if (result.applied) applySuccessVisible.value = true
     await loadStatus()
   } catch (e) {
-    applyError.value = e instanceof Error ? e.message : '套用失敗'
+    applyError.value = e instanceof Error ? e.message : t('forwarding.applyFailed')
   } finally {
     applying.value = false
   }
@@ -254,13 +257,13 @@ onMounted(loadAll)
 
 <template>
   <section class="page">
-    <h1>轉發設定</h1>
+    <h1>{{ t('forwarding.title') }}</h1>
 
     <!-- Destinations 區 -->
     <section class="block">
       <div class="block-header">
-        <h2>目的地</h2>
-        <button type="button" data-test="add-dest" @click="openAddDest">新增目的地</button>
+        <h2>{{ t('forwarding.destHeading') }}</h2>
+        <button type="button" data-test="add-dest" @click="openAddDest">{{ t('forwarding.addDest') }}</button>
       </div>
 
       <p v-if="destErrorMsg && !showDestForm" role="alert" class="error">{{ destErrorMsg }}</p>
@@ -268,61 +271,61 @@ onMounted(loadAll)
       <form v-if="showDestForm" @submit.prevent="submitDest" class="entity-form">
         <p v-if="destErrorMsg" role="alert" class="error">{{ destErrorMsg }}</p>
         <label>
-          名稱
+          {{ t('common.name') }}
           <input data-test="dest-name" v-model="destForm.name" type="text" required />
         </label>
         <label>
-          協定
+          {{ t('common.protocol') }}
           <select data-test="dest-protocol" v-model="destForm.protocol">
             <option value="udp">udp</option>
             <option value="tcp">tcp</option>
           </select>
         </label>
         <label>
-          主機
+          {{ t('forwarding.host') }}
           <input data-test="dest-host" v-model="destForm.host" type="text" required />
         </label>
         <label>
-          埠號
+          {{ t('common.port') }}
           <input data-test="dest-port" v-model.number="destForm.port" type="number" min="1" max="65535" required />
         </label>
         <fieldset class="header-mode">
-          <legend>表頭模式</legend>
+          <legend>{{ t('forwarding.headerMode') }}</legend>
           <label class="radio-option">
             <input data-test="dest-headerMode-raw" type="radio" value="raw" v-model="destForm.headerMode" />
-            <span><code>raw</code>（預設）：原樣轉發，下游收到與設備送出完全相同的內容</span>
+            <span><code>raw</code>{{ t('forwarding.headerModeRawSuffix') }}{{ t('forwarding.headerModeRaw') }}</span>
           </label>
           <label class="radio-option">
             <input data-test="dest-headerMode-standard" type="radio" value="standard" v-model="destForm.headerMode" />
-            <span><code>standard</code>：以 RFC3164 重寫表頭</span>
+            <span><code>standard</code>{{ t('forwarding.headerModeStandard') }}</span>
           </label>
         </fieldset>
         <label class="toggle">
           <input data-test="dest-enabled" v-model="destForm.enabled" type="checkbox" />
-          啟用
+          {{ t('common.enabled') }}
         </label>
         <div class="form-actions">
-          <button type="submit">{{ editingDestId !== null ? '儲存' : '新增' }}</button>
-          <button type="button" @click="closeDestForm">取消</button>
+          <button type="submit">{{ editingDestId !== null ? t('common.save') : t('common.add') }}</button>
+          <button type="button" @click="closeDestForm">{{ t('common.cancel') }}</button>
         </div>
       </form>
 
-      <p v-if="loading">載入中…</p>
+      <p v-if="loading">{{ t('common.loading') }}</p>
       <EntityTable v-else :columns="destColumns" :rows="destinations">
         <template #cell-hostPort="{ row }">{{ row.host }}:{{ row.port }}</template>
         <template #cell-headerMode="{ row }">{{ row.headerMode }}</template>
-        <template #cell-enabled="{ row }">{{ row.enabled ? '是' : '否' }}</template>
+        <template #cell-enabled="{ row }">{{ row.enabled ? t('common.yes') : t('common.no') }}</template>
         <template #actions="{ row }">
-          <button type="button" data-test="dest-edit" @click="openEditDest(row)">編輯</button>
-          <button type="button" data-test="dest-delete" @click="removeDest(row)">刪除</button>
+          <button type="button" data-test="dest-edit" @click="openEditDest(row)">{{ t('common.edit') }}</button>
+          <button type="button" data-test="dest-delete" @click="removeDest(row)">{{ t('common.delete') }}</button>
         </template>
       </EntityTable>
     </section>
 
     <!-- Routes 區 -->
     <section class="block">
-      <h2>路由矩陣</h2>
-      <p class="hint">勾選＝建立無過濾條件的轉發路由；取消勾選＝刪除該路由；點「⚙」設定 sourceFilter / facilities / maxSeverity。</p>
+      <h2>{{ t('forwarding.routeMatrixHeading') }}</h2>
+      <p class="hint">{{ t('forwarding.routeHint') }}</p>
       <p v-if="routeErrorMsg" role="alert" class="error">{{ routeErrorMsg }}</p>
       <RouteMatrix
         :inputs="inputs"
@@ -342,10 +345,10 @@ onMounted(loadAll)
     <!-- 套用區 -->
     <section class="block apply-block">
       <div class="apply-row">
-        <button type="button" data-test="apply" :disabled="applying" @click="applyConfig">套用設定</button>
-        <span v-if="status.dirty" class="badge-dirty" role="status" data-test="dirty-badge">尚未套用變更</span>
+        <button type="button" data-test="apply" :disabled="applying" @click="applyConfig">{{ t('forwarding.applyButton') }}</button>
+        <span v-if="status.dirty" class="badge-dirty" role="status" data-test="dirty-badge">{{ t('forwarding.dirtyBadge') }}</span>
       </div>
-      <p v-if="applySuccessVisible" class="toast-success" role="status" data-test="apply-success">套用成功</p>
+      <p v-if="applySuccessVisible" class="toast-success" role="status" data-test="apply-success">{{ t('forwarding.applySuccess') }}</p>
       <pre v-if="applyError" class="apply-error" data-test="apply-error">{{ applyError }}</pre>
     </section>
   </section>

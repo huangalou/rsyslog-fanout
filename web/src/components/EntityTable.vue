@@ -10,10 +10,14 @@ export interface EntityTableColumn {
   label: string
 }
 
+import { useI18n } from 'vue-i18n'
+
 defineProps<{
   columns: EntityTableColumn[]
   rows: T[]
 }>()
+
+const { t } = useI18n()
 
 defineSlots<
   Record<`cell-${string}`, (props: { row: T }) => unknown> & {
@@ -39,7 +43,7 @@ function rowKey(row: T, fallbackIndex: number): string | number {
     <thead>
       <tr>
         <th v-for="col in columns" :key="col.key">{{ col.label }}</th>
-        <th v-if="$slots.actions" class="actions-col">操作</th>
+        <th v-if="$slots.actions" class="actions-col">{{ t('common.actions') }}</th>
       </tr>
     </thead>
     <tbody>

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useStats } from '../stores/stats'
 import LineChart from '../components/LineChart.vue'
 import StatusCard, { type StatusCardState } from '../components/StatusCard.vue'
 
+const { t } = useI18n()
 const stats = useStats()
 
 const ratePoints = computed(() => stats.history.map((h) => ({ ts: h.ts, v: h.total })))
@@ -30,42 +32,42 @@ onUnmounted(() => {
 <template>
   <section class="page dashboard">
     <header class="dash-header">
-      <h1>Dashboard</h1>
+      <h1>{{ t('nav.dashboard') }}</h1>
       <span v-if="stats.dirty" role="status" class="dirty-banner-wrap">
-        <RouterLink to="/forwarding" class="dirty-banner">有未套用的變更 → 前往套用</RouterLink>
+        <RouterLink to="/forwarding" class="dirty-banner">{{ t('dashboard.dirtyBanner') }}</RouterLink>
       </span>
     </header>
 
     <section class="chart-section" aria-labelledby="rate-heading">
-      <h2 id="rate-heading">總接收速率</h2>
+      <h2 id="rate-heading">{{ t('dashboard.rateHeading') }}</h2>
       <LineChart :points="ratePoints" />
     </section>
 
     <section class="cards-section" aria-labelledby="inputs-heading">
-      <h2 id="inputs-heading">接收來源</h2>
+      <h2 id="inputs-heading">{{ t('dashboard.inputsHeading') }}</h2>
       <div class="card-grid">
         <StatusCard
           v-for="[key, input] in inputEntries"
           :key="key"
           :title="key"
-          :value="`${input.rate.toFixed(1)}/s ・ 累計 ${input.submitted}`"
+          :value="t('dashboard.inputValue', { rate: input.rate.toFixed(1), submitted: input.submitted })"
           state="ok"
         />
-        <p v-if="inputEntries.length === 0" class="empty">尚無接收來源</p>
+        <p v-if="inputEntries.length === 0" class="empty">{{ t('dashboard.emptyInputs') }}</p>
       </div>
     </section>
 
     <section class="cards-section" aria-labelledby="actions-heading">
-      <h2 id="actions-heading">轉發目的地</h2>
+      <h2 id="actions-heading">{{ t('dashboard.actionsHeading') }}</h2>
       <div class="card-grid">
         <StatusCard
           v-for="[key, action] in actionEntries"
           :key="key"
           :title="key"
-          :value="`處理 ${action.processed} ・ 失敗 ${action.failed} ・ 佇列 ${action.queueSize}`"
+          :value="t('dashboard.actionValue', { processed: action.processed, failed: action.failed, queueSize: action.queueSize })"
           :state="actionState(action)"
         />
-        <p v-if="actionEntries.length === 0" class="empty">尚無轉發目的地</p>
+        <p v-if="actionEntries.length === 0" class="empty">{{ t('dashboard.emptyActions') }}</p>
       </div>
     </section>
   </section>
