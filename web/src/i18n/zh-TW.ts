@@ -113,7 +113,10 @@ export default {
     DESTINATION_NOT_FOUND: 'destination 不存在',
     PASSWORD_INCORRECT: '密碼錯誤',
     PASSWORD_LENGTH: '密碼長度需 8-128 字元',
-    HOST_FORMAT: '主機名稱僅允許字母、數字、點與連字號',
+    HOST_FORMAT: '主機名稱僅允許字母、數字、點與連字號，或 IPv6 位址',
+    NAME_IN_USE: '名稱已被使用',
+    ROUTE_EXISTS: '此接收與目的地之間已存在路由',
+    INTERNAL: '伺服器內部錯誤',
     SOURCE_FILTER_FORMAT: '僅接受完整 IP 或 /8、/16、/24 CIDR',
   },
 }

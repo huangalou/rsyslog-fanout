@@ -20,37 +20,46 @@ export async function crudRoutes(app: FastifyInstance) {
       return reply.code(400).send(fail('PORT_OUT_OF_RANGE', { port: p.data.port, range: portRangeLabel() }))
     if (repo.listInputs().some((i) => i.port === p.data.port && i.protocol === p.data.protocol))
       return reply.code(400).send(fail('PORT_IN_USE'))
+    if (repo.listInputs().some((i) => i.name === p.data.name))
+      return reply.code(400).send(fail('NAME_IN_USE'))
     return ok(repo.createInput(p.data))
   })
-  app.put('/api/inputs/:id', async (req, reply) => {
+  app.put<{ Params: { id: string } }>('/api/inputs/:id', async (req, reply) => {
     const p = InputCreateSchema.safeParse(req.body)
     if (!p.success) return reply.code(400).send(failValidation(p.error.issues[0].message))
-    const id = Number((req.params as any).id)
+    const id = Number(req.params.id)
     if (!env.portRange.includes(p.data.port))
       return reply.code(400).send(fail('PORT_OUT_OF_RANGE', { port: p.data.port, range: portRangeLabel() }))
     if (repo.listInputs().some((i) => i.id !== id && i.port === p.data.port && i.protocol === p.data.protocol))
       return reply.code(400).send(fail('PORT_IN_USE'))
+    if (repo.listInputs().some((i) => i.id !== id && i.name === p.data.name))
+      return reply.code(400).send(fail('NAME_IN_USE'))
     const u = repo.updateInput(id, p.data)
     return u ? ok(u) : reply.code(404).send(fail('NOT_FOUND'))
   })
-  app.delete('/api/inputs/:id', async (req, reply) => {
-    return repo.deleteInput(Number((req.params as any).id)) ? ok({ deleted: true }) : reply.code(404).send(fail('NOT_FOUND'))
+  app.delete<{ Params: { id: string } }>('/api/inputs/:id', async (req, reply) => {
+    return repo.deleteInput(Number(req.params.id)) ? ok({ deleted: true }) : reply.code(404).send(fail('NOT_FOUND'))
   })
 
   app.get('/api/destinations', async () => ok(repo.listDestinations()))
   app.post('/api/destinations', async (req, reply) => {
     const p = DestinationCreateSchema.safeParse(req.body)
     if (!p.success) return reply.code(400).send(failValidation(p.error.issues[0].message))
+    if (repo.listDestinations().some((d) => d.name === p.data.name))
+      return reply.code(400).send(fail('NAME_IN_USE'))
     return ok(repo.createDestination(p.data))
   })
-  app.put('/api/destinations/:id', async (req, reply) => {
+  app.put<{ Params: { id: string } }>('/api/destinations/:id', async (req, reply) => {
     const p = DestinationCreateSchema.safeParse(req.body)
     if (!p.success) return reply.code(400).send(failValidation(p.error.issues[0].message))
-    const u = repo.updateDestination(Number((req.params as any).id), p.data)
+    const destId = Number(req.params.id)
+    if (repo.listDestinations().some((d) => d.id !== destId && d.name === p.data.name))
+      return reply.code(400).send(fail('NAME_IN_USE'))
+    const u = repo.updateDestination(destId, p.data)
     return u ? ok(u) : reply.code(404).send(fail('NOT_FOUND'))
   })
-  app.delete('/api/destinations/:id', async (req, reply) => {
-    return repo.deleteDestination(Number((req.params as any).id)) ? ok({ deleted: true }) : reply.code(404).send(fail('NOT_FOUND'))
+  app.delete<{ Params: { id: string } }>('/api/destinations/:id', async (req, reply) => {
+    return repo.deleteDestination(Number(req.params.id)) ? ok({ deleted: true }) : reply.code(404).send(fail('NOT_FOUND'))
   })
 
   app.get('/api/routes', async () => ok(repo.listRoutes()))
@@ -59,9 +68,11 @@ export async function crudRoutes(app: FastifyInstance) {
     if (!p.success) return reply.code(400).send(failValidation(p.error.issues[0].message))
     if (!repo.listInputs().some((i) => i.id === p.data.inputId)) return reply.code(400).send(fail('INPUT_NOT_FOUND'))
     if (!repo.listDestinations().some((d) => d.id === p.data.destinationId)) return reply.code(400).send(fail('DESTINATION_NOT_FOUND'))
+    if (repo.listRoutes().some((r) => r.inputId === p.data.inputId && r.destinationId === p.data.destinationId))
+      return reply.code(400).send(fail('ROUTE_EXISTS'))
     return ok(repo.createRoute(p.data))
   })
-  app.delete('/api/routes/:id', async (req, reply) => {
-    return repo.deleteRoute(Number((req.params as any).id)) ? ok({ deleted: true }) : reply.code(404).send(fail('NOT_FOUND'))
+  app.delete<{ Params: { id: string } }>('/api/routes/:id', async (req, reply) => {
+    return repo.deleteRoute(Number(req.params.id)) ? ok({ deleted: true }) : reply.code(404).send(fail('NOT_FOUND'))
   })
 }

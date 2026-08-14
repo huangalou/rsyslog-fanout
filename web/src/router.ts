@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { isLoggedIn } from './auth'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -10,4 +11,9 @@ export const router = createRouter({
     { path: '/tail', component: () => import('./pages/LiveTail.vue') },
     { path: '/sources', component: () => import('./pages/Sources.vue') },
   ],
+})
+
+router.beforeEach((to) => {
+  if (to.path !== '/login' && !isLoggedIn()) return '/login'
+  if (to.path === '/login' && isLoggedIn()) return '/'
 })

@@ -6,21 +6,21 @@ jobs:
   unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: 22 }
       - run: npm ci --prefix server && npm run --prefix server test:coverage
-      - run: npm ci --prefix web && npm run --prefix web test && npm run --prefix web build
+      - run: npm ci --prefix web && npm run --prefix web test:coverage && npm run --prefix web build
   e2e:
     runs-on: ubuntu-latest
     needs: unit
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: cd docker && FANOUT_ADMIN_PASSWORD=citestpw docker compose up -d --build
       - run: |
           for i in $(seq 1 30); do
             curl -sf localhost:8080/api/health && break; sleep 2; done
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with: { node-version: 22 }
       - run: cd e2e && npm ci && npx playwright install --with-deps chromium
       - run: cd e2e && FANOUT_ADMIN_PASSWORD=citestpw npx playwright test

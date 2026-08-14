@@ -13,6 +13,9 @@ export type ErrorCode =
   | 'HOST_FORMAT'
   | 'SOURCE_FILTER_FORMAT'
   | 'APPLY_FAILED'
+  | 'NAME_IN_USE'
+  | 'ROUTE_EXISTS'
+  | 'INTERNAL'
 
 export type ErrorParams = Record<string, string | number>
 
@@ -38,9 +41,12 @@ const MESSAGES: Record<ErrorCode, string> = {
   DESTINATION_NOT_FOUND: 'Destination does not exist',
   PASSWORD_INCORRECT: 'Incorrect password',
   PASSWORD_LENGTH: 'Password must be 8-128 characters',
-  HOST_FORMAT: 'Host may only contain letters, digits, dots, and hyphens',
+  HOST_FORMAT: 'Host may only contain letters, digits, dots, and hyphens, or be an IPv6 literal',
   SOURCE_FILTER_FORMAT: 'Only a full IP or a /8, /16, /24 CIDR is accepted',
   APPLY_FAILED: 'Apply failed',
+  NAME_IN_USE: 'Name already in use',
+  ROUTE_EXISTS: 'A route between this input and destination already exists',
+  INTERNAL: 'Internal server error',
 }
 
 export const isErrorCode = (s: string): s is ErrorCode => s in MESSAGES

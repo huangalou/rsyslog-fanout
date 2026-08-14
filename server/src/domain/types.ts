@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isIPv6 } from 'node:net'
 
 export type Protocol = 'udp' | 'tcp'
 export type HeaderMode = 'raw' | 'standard'
@@ -34,8 +35,12 @@ const port = z.number().int().min(1).max(65535)
 const protocol = z.enum(['udp', 'tcp'])
 
 export const InputCreateSchema = z.object({ name, protocol, port, enabled: z.boolean() })
+// hostname/IPv4 用嚴格白名單 regex，IPv6 literal 交給 net.isIPv6 —
+// 兩者都是防止跳出 rsyslog conf 屬性注入指令的安全邊界，不可放寬。
+// zone-id（fe80::1%eth0）對容器 outbound 目的地無意義，一併拒絕。
+const HOSTNAME_RE = /^[A-Za-z0-9.\-]+$/
 const host = z.string().min(1).max(255)
-  .regex(/^[A-Za-z0-9.\-]+$/, 'HOST_FORMAT')
+  .refine((v) => HOSTNAME_RE.test(v) || (isIPv6(v) && !v.includes('%')), { message: 'HOST_FORMAT' })
 export const DestinationCreateSchema = z.object({
   name, protocol, host, port,
   headerMode: z.enum(['raw', 'standard']).default('raw'), enabled: z.boolean(),

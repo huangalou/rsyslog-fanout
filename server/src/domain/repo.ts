@@ -25,7 +25,7 @@ export interface Repo {
 
 export function createRepo(db: Database): Repo {
   const getSetting = (k: string): string | null =>
-    (db.prepare('SELECT value FROM settings WHERE key=?').get(k) as any)?.value ?? null
+    (db.prepare('SELECT value FROM settings WHERE key=?').get(k) as { value: string } | undefined)?.value ?? null
   const setSetting = (k: string, v: string): void => {
     db.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k, v)
   }
@@ -63,11 +63,11 @@ export function createRepo(db: Database): Repo {
     listRoutes: listRoutesFn,
     createRoute(d) {
       // Validate foreign keys before insert
-      const inputExists = (db.prepare('SELECT 1 FROM inputs WHERE id=?').get(d.inputId) as any) !== undefined
+      const inputExists = db.prepare('SELECT 1 FROM inputs WHERE id=?').get(d.inputId) !== undefined
       if (!inputExists) {
         throw new Error('input 不存在')
       }
-      const destExists = (db.prepare('SELECT 1 FROM destinations WHERE id=?').get(d.destinationId) as any) !== undefined
+      const destExists = db.prepare('SELECT 1 FROM destinations WHERE id=?').get(d.destinationId) !== undefined
       if (!destExists) {
         throw new Error('destination 不存在')
       }

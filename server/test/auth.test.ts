@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
 import bcrypt from 'bcryptjs'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -98,5 +98,36 @@ describe('bootstrap', () => {
       monitor: { snapshot: () => ({ inputs: {}, actions: {}, sources: [] }), onStats: () => () => {}, onTail: () => () => {} },
     })
     expect(bcrypt.compareSync('existing-pw', repo.getPasswordHash()!)).toBe(true)
+  })
+})
+
+describe('makeSessions 過期清掃', () => {
+  it('過期 session 於下次 create 時清出 store，不無限成長', async () => {
+    const { makeSessions } = await import('../src/routes/auth.js')
+    vi.useFakeTimers()
+    try {
+      const s = makeSessions()
+      s.create()
+      s.create()
+      expect(s.count()).toBe(2)
+      vi.advanceTimersByTime(25 * 60 * 60 * 1000)   // 超過 24h TTL
+      s.create()                                     // 觸發清掃
+      expect(s.count()).toBe(1)                      // 只剩新建的這筆
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  it('valid() 對過期 token 回 false 並同步移除該筆', async () => {
+    const { makeSessions } = await import('../src/routes/auth.js')
+    vi.useFakeTimers()
+    try {
+      const s = makeSessions()
+      const tok = s.create()
+      vi.advanceTimersByTime(25 * 60 * 60 * 1000)
+      expect(s.valid(tok)).toBe(false)
+      expect(s.count()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
