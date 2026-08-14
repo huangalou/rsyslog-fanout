@@ -8,14 +8,25 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000
 
 export function makeSessions() {
   const store = new Map<string, number>()
+  const sweep = () => {
+    const now = Date.now()
+    for (const [tok, exp] of store) if (exp <= now) store.delete(tok)
+  }
   return {
     create(): string {
+      sweep()                                  // 過期項於每次登入時清出，store 不無限成長
       const tok = randomBytes(32).toString('hex')
       store.set(tok, Date.now() + SESSION_TTL_MS)
       return tok
     },
-    valid: (tok: string) => (store.get(tok) ?? 0) > Date.now(),
+    valid(tok: string): boolean {
+      const exp = store.get(tok)
+      if (exp === undefined) return false
+      if (exp <= Date.now()) { store.delete(tok); return false }
+      return true
+    },
     destroy: (tok: string) => void store.delete(tok),
+    count: () => store.size,
   }
 }
 export type Sessions = ReturnType<typeof makeSessions>

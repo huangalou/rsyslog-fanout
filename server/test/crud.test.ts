@@ -120,3 +120,33 @@ describe('routes + config', () => {
     expect(s.json().data.dirty).toBe(false)
   })
 })
+
+describe('唯一性限制', () => {
+  it('input 名稱重複 → 400、錯誤碼 NAME_IN_USE', async () => {
+    await post('/api/inputs', { name: 'dup', protocol: 'udp', port: 514, enabled: true })
+    const r = await post('/api/inputs', { name: 'dup', protocol: 'udp', port: 5140, enabled: true })
+    expect(r.statusCode).toBe(400)
+    expect(r.json().error.code).toBe('NAME_IN_USE')
+  })
+  it('PUT input 保留自己的名稱不算重複', async () => {
+    const c = await post('/api/inputs', { name: 'keep', protocol: 'udp', port: 514, enabled: true })
+    const id = c.json().data.id
+    const u = await app.inject({ method: 'PUT', url: `/api/inputs/${id}`, payload: { name: 'keep', protocol: 'udp', port: 514, enabled: false }, cookies: cookie })
+    expect(u.statusCode).toBe(200)
+  })
+  it('destination 名稱重複 → 400、錯誤碼 NAME_IN_USE', async () => {
+    await post('/api/destinations', { name: 'd-dup', protocol: 'udp', host: 'h1', port: 514, enabled: true })
+    const r = await post('/api/destinations', { name: 'd-dup', protocol: 'udp', host: 'h2', port: 515, enabled: true })
+    expect(r.statusCode).toBe(400)
+    expect(r.json().error.code).toBe('NAME_IN_USE')
+  })
+  it('同一 input→destination 路由重複 → 400、錯誤碼 ROUTE_EXISTS', async () => {
+    const i = (await post('/api/inputs', { name: 'ri', protocol: 'udp', port: 514, enabled: true })).json().data.id
+    const d = (await post('/api/destinations', { name: 'rd', protocol: 'udp', host: 'h', port: 514, enabled: true })).json().data.id
+    const first = await post('/api/routes', { inputId: i, destinationId: d, sourceFilter: null, facilities: null, maxSeverity: null })
+    expect(first.statusCode).toBe(200)
+    const r = await post('/api/routes', { inputId: i, destinationId: d, sourceFilter: '10.0.0.0/8', facilities: null, maxSeverity: null })
+    expect(r.statusCode).toBe(400)
+    expect(r.json().error.code).toBe('ROUTE_EXISTS')
+  })
+})
