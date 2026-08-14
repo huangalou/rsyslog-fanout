@@ -44,7 +44,7 @@ describe('api client', () => {
   it('zod 自訂格式錯誤碼(HOST_FORMAT)依語系翻譯', async () => {
     mockFetch(400, { success: false, data: null, error: { code: 'HOST_FORMAT', message: 'Host may only contain letters, digits, dots, and hyphens' } })
     await expect(api.post('/api/destinations', {})).rejects.toMatchObject({
-      message: '主機名稱僅允許字母、數字、點與連字號',
+      message: '主機名稱僅允許字母、數字、點與連字號，或 IPv6 位址',
     })
   })
   it('未知錯誤碼 fallback 到 server 英文 message', async () => {

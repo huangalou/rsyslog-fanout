@@ -29,3 +29,15 @@ describe('Forwarding page', () => {
     expect(api.post).toHaveBeenCalledWith('/api/config/apply', undefined)
   })
 })
+
+describe('Apply 成功回饋', () => {
+  it('套用成功後顯示 apply-success 狀態文字', async () => {
+    const w = mount(Forwarding, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+    expect(w.find('[data-test="apply-success"]').exists()).toBe(false)
+    await w.find('[data-test="apply"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="apply-success"]').exists()).toBe(true)
+    expect(w.find('[data-test="apply-success"]').attributes('role')).toBe('status')
+  })
+})
