@@ -53,6 +53,22 @@ Docker 無法在執行期新增 port mapping，因此可用的監聽埠範圍必
 2. 同步更新 `FANOUT_PORT_RANGE`，例如 `"514,5140-5199,9000-9010"`。
 3. 執行 `docker compose up -d --build` 重建容器以套用新的 port mapping。
 
+## 整合範例：CyberRange
+
+FanOut 與 [CyberRange](https://github.com/huangalou/CyberRange)（catalog 驅動的日誌產生器，用於 SIEM 偵測規則驗證）天然成對：把 CyberRange 的 UDP sink 指向 FanOut 的 input，FanOut 便能將日誌流透明分流到一個或多個 SIEM。
+
+```bash
+# 1. 在 WebUI 建立 Input（例如 udp/5160）、每個 SIEM 一個 Destination
+#   （headerMode: raw）、一條 Route 串起來，然後 Apply。
+
+# 2. 對 input 發射具真實廠牌樣態的日誌：
+cyberrange gen \
+  --vendor fortinet --product fortios --version 7.4 --log-type traffic.forward \
+  --count 1000 --rate 50 --sink udp://<fanout-host>:5160
+```
+
+已完成端到端實測（2026-08-15）：CyberRange 產生的 FortiOS key-value、CEF、RFC 3164 三種格式，經 FanOut 轉發後在下游接收端與送出內容 byte-identical（`headerMode: raw`），Live Tail 亦正確解析 facility/severity。
+
 ## 已知限制
 
 - **套用設定時有小於 1 秒的中斷。** rsyslog 不支援熱載入新的監聽埠，因此套用設定必須重啟 rsyslogd（通常 <1 秒）。TCP 來源會自動重連；該瞬間傳輸中的 UDP 封包會遺失——這是 rsyslog 本身的特性，並非本工具的 bug。
