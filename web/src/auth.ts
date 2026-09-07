@@ -7,3 +7,13 @@ const KEY = 'fanout_logged_in'
 export const isLoggedIn = (): boolean => localStorage.getItem(KEY) === '1'
 export const markLoggedIn = (): void => localStorage.setItem(KEY, '1')
 export const clearLoggedIn = (): void => localStorage.removeItem(KEY)
+
+// 跨分頁同步：另一分頁登入/登出改寫 localStorage 時，本分頁收到 storage 事件
+// （同一分頁自己寫入不會觸發）。key 為 null 代表 localStorage.clear()，一併視為變更。
+export const onLoggedInChange = (cb: () => void): (() => void) => {
+  const handler = (e: StorageEvent): void => {
+    if (e.key === null || e.key === KEY) cb()
+  }
+  window.addEventListener('storage', handler)
+  return () => window.removeEventListener('storage', handler)
+}

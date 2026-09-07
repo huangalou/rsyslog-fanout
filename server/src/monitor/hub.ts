@@ -14,6 +14,8 @@ export interface MonitorHub {
 export interface HubInternals extends MonitorHub {
   setInput(key: string, submitted: number, rate: number): void
   setAction(key: string, v: { processed: number; failed: number; suspended: boolean; queueSize: number }): void
+  deleteInput(key: string): void
+  deleteAction(key: string): void
   seenSource(ip: string, ts: number): void
   emitStats(): void
   emitTail(m: TailMsg): void
@@ -35,6 +37,8 @@ export function createHub(opts: { staleAfterMs: number }): HubInternals {
     onTail: (cb) => (tailSubs.add(cb), () => tailSubs.delete(cb)),
     setInput: (k, submitted, rate) => void (inputs[k] = { submitted, rate }),
     setAction: (k, v) => void (actions[k] = v),
+    deleteInput: (k) => void delete inputs[k],
+    deleteAction: (k) => void delete actions[k],
     seenSource: (ip, ts) => void sources.set(ip, ts),
     emitStats: () => statsSubs.forEach((cb) => cb(snapshot())),
     emitTail: (m) => tailSubs.forEach((cb) => cb(m)),

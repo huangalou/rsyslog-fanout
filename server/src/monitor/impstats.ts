@@ -17,9 +17,35 @@ export function parseImpstatsLine(line: string): ImpstatsEntry | null {
   } catch { return null }
 }
 
-// rate 計算基準與告警去重，由每個 reader（或測試）自行持有，避免跨實例污染
-export interface ApplyState { prevSubmitted: Map<string, number>; formatWarned: boolean }
-export const createApplyState = (): ApplyState => ({ prevSubmitted: new Map(), formatWarned: false })
+// rate 計算基準、告警去重與缺席計數，由每個 reader（或測試）自行持有，避免跨實例污染。
+// missing：hub 內既有 key 連續幾個 batch 沒在 impstats 輸出中出現（'i:<key>' / 'a:<key>' 命名空間）。
+export interface ApplyState { prevSubmitted: Map<string, number>; formatWarned: boolean; missing: Map<string, number> }
+export const createApplyState = (): ApplyState => ({ prevSubmitted: new Map(), formatWarned: false, missing: new Map() })
+
+// Apply 刪掉 input/action 並重啟 rsyslogd 後，impstats 不再輸出該條目，但 hub 內
+// 的 key 不會自己消失，Dashboard 會一直顯示已刪掉的來源/目的地累計值。
+// 連續 PRUNE_AFTER_MISSES 個 batch 都沒出現才移除：reader 每 10 秒讀一次、impstats
+// 每 10 秒寫一次，兩者相位漂移時單一 batch 可能只含半個 interval（或尾行被截斷），
+// 只缺一次不能當作已刪除，否則卡片會閃爍。
+const PRUNE_AFTER_MISSES = 2
+
+function pruneMissing(
+  hub: HubInternals, state: ApplyState, seenInputs: Set<string>, seenActions: Set<string>,
+): void {
+  const snap = hub.snapshot()
+  const check = (ns: 'i' | 'a', keys: string[], seen: Set<string>, remove: (k: string) => void) => {
+    for (const key of keys) {
+      const id = `${ns}:${key}`
+      if (seen.has(key)) { state.missing.delete(id); continue }
+      const misses = (state.missing.get(id) ?? 0) + 1
+      if (misses < PRUNE_AFTER_MISSES) { state.missing.set(id, misses); continue }
+      state.missing.delete(id)
+      remove(key)
+    }
+  }
+  check('i', Object.keys(snap.inputs), seenInputs, (k) => { hub.deleteInput(k); state.prevSubmitted.delete(k) })
+  check('a', Object.keys(snap.actions), seenActions, (k) => hub.deleteAction(k))
+}
 
 // 實機名稱格式（rsyslog 8）：UDP 監聽一埠兩條 imudp(*/514/IPv4|IPv6)，TCP 為 imtcp(514)；
 // imudp(w0) 這類 worker 條目不屬於監聽統計。
@@ -50,12 +76,14 @@ export function applyEntries(
   // 時間快照（如重啟後從頭讀檔），先取每個名稱的最後一筆，
   // 再把同一埠的 IPv4/IPv6 條目加總，以總量算 rate。
   const latestByName = new Map<string, { key: string; submitted: number }>()
+  const seenActions = new Set<string>()
   let sawListenerOrigin = false
   for (const e of entries) {
     const key = listenerKey(e.name)
     if (key) {
       latestByName.set(e.name, { key, submitted: e.values.submitted ?? 0 })
     } else if (e.origin === 'core.action' && ROUTE_ACTION_RE.test(e.name)) {
+      seenActions.add(e.name)
       hub.setAction(e.name, {
         processed: e.values.processed ?? 0, failed: e.values.failed ?? 0,
         suspended: (e.values.suspended ?? 0) > 0, queueSize: queueSizes.get(e.name) ?? 0,
@@ -81,6 +109,7 @@ export function applyEntries(
     state.prevSubmitted.set(key, submitted)
     hub.setInput(key, submitted, rate)
   }
+  pruneMissing(hub, state, new Set(submittedByKey.keys()), seenActions)
   hub.emitStats()
 }
 
