@@ -110,7 +110,7 @@ cd web && npm install && npm run dev
 
 ```bash
 cd server && npm run test:coverage   # 單元 + 整合測試，覆蓋率門檻 ≥80%
-cd web && npm test                   # component/單元測試
+cd web && npm run test:coverage      # component/單元測試，覆蓋率門檻 ≥80%
 ```
 
 ### End-to-end 測試

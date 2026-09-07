@@ -110,7 +110,7 @@ Tests:
 
 ```bash
 cd server && npm run test:coverage   # unit + integration, ≥80% coverage gate
-cd web && npm test                   # component/unit tests
+cd web && npm run test:coverage      # component/unit tests, ≥80% coverage gate
 ```
 
 ### End-to-end tests

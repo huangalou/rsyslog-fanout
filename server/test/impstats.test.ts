@@ -194,3 +194,82 @@ describe('createImpstatsReader', () => {
     reader.stop()
   })
 })
+
+describe('已不存在的 input/action 殘留 key 清理（Apply 刪除後 impstats 不再輸出該條目）', () => {
+  const udpAt = (port: number, n: number) =>
+    parseImpstatsLine(`{ "name": "imudp(*\\/${port}\\/IPv4)", "origin": "imudp", "submitted": ${n} }`)!
+  const actionAt = (name: string, n: number) =>
+    parseImpstatsLine(`{ "name": "${name}", "origin": "core.action", "processed": ${n}, "failed": 0, "suspended": 0 }`)!
+
+  it('key 連續兩個 batch 未出現即自 snapshot 移除，只缺一個 batch 仍保留（容忍 reader 讀到半個 interval）', () => {
+    const hub = createHub({ staleAfterMs: 600000 })
+    const st = newState()
+    applyEntries(hub, [udpAt(514, 10), udpAt(5160, 5)], 10, st)
+    expect(Object.keys(hub.snapshot().inputs).sort()).toEqual(['udp:514', 'udp:5160'])
+
+    applyEntries(hub, [udpAt(514, 20)], 10, st)                    // 刪掉 5160 後的第一個 batch
+    expect(hub.snapshot().inputs['udp:5160']).toBeDefined()        // 可能只是讀到半個 interval，先保留
+
+    applyEntries(hub, [udpAt(514, 30)], 10, st)                    // 第二個 batch 仍缺
+    expect(hub.snapshot().inputs['udp:5160']).toBeUndefined()
+    expect(hub.snapshot().inputs['udp:514'].submitted).toBe(30)
+  })
+
+  it('action 同樣規則：連續缺兩個 batch 才移除', () => {
+    const hub = createHub({ staleAfterMs: 600000 })
+    const st = newState()
+    applyEntries(hub, [actionAt('d1_i1', 1), actionAt('d2_i1', 1)], 10, st)
+    applyEntries(hub, [actionAt('d1_i1', 2)], 10, st)
+    expect(hub.snapshot().actions['d2_i1']).toBeDefined()
+    applyEntries(hub, [actionAt('d1_i1', 3)], 10, st)
+    expect(Object.keys(hub.snapshot().actions)).toEqual(['d1_i1'])
+  })
+
+  it('缺席一次後再出現則計數歸零，之後再缺一次不會被移除', () => {
+    const hub = createHub({ staleAfterMs: 600000 })
+    const st = newState()
+    applyEntries(hub, [udpAt(514, 10), udpAt(5160, 5)], 10, st)
+    applyEntries(hub, [udpAt(514, 20)], 10, st)                    // 缺 1
+    applyEntries(hub, [udpAt(514, 30), udpAt(5160, 6)], 10, st)    // 回來
+    applyEntries(hub, [udpAt(514, 40)], 10, st)                    // 缺 1（重新計）
+    expect(hub.snapshot().inputs['udp:5160']).toBeDefined()
+  })
+
+  it('移除後該 key 的 rate 基準一併清除：重新加回時首筆 rate 為 0 而非對舊值取差', () => {
+    const hub = createHub({ staleAfterMs: 600000 })
+    const st = newState()
+    applyEntries(hub, [udpAt(514, 10), udpAt(5160, 500)], 10, st)
+    applyEntries(hub, [udpAt(514, 20)], 10, st)
+    applyEntries(hub, [udpAt(514, 30)], 10, st)
+    applyEntries(hub, [udpAt(514, 40), udpAt(5160, 800)], 10, st)  // 同埠重新建立（新 rsyslogd 行程）
+    expect(hub.snapshot().inputs['udp:5160'].rate).toBe(0)
+  })
+
+  it('全部 input 都刪掉後 impstats 只剩 resource-usage/main Q（無任何 listener 條目）：既有 key 仍算缺席，兩個 batch 後清空', () => {
+    // 若把「batch 內沒解析到任何 listener」當成讀取異常而跳過計數，這個情境的 key 會永遠留著。
+    // 反向風險（reader 連續兩次都只讀到 worker/queue 行）在 impstats 一次寫完整個 interval 的實機行為下不會發生。
+    const hub = createHub({ staleAfterMs: 600000 })
+    const st = newState()
+    const housekeeping = [
+      parseImpstatsLine('{ "name": "resource-usage", "origin": "impstats", "utime": 1, "stime": 1 }')!,
+      parseImpstatsLine('{ "name": "main Q", "origin": "core.queue", "size": 0, "enqueued": 0 }')!,
+    ]
+    applyEntries(hub, [udpAt(5160, 5), actionAt('d1_i1', 1)], 10, st)
+    applyEntries(hub, housekeeping, 10, st)
+    expect(hub.snapshot().inputs['udp:5160']).toBeDefined()
+    applyEntries(hub, housekeeping, 10, st)
+    expect(hub.snapshot().inputs).toEqual({})
+    expect(hub.snapshot().actions).toEqual({})
+    expect(st.missing.size).toBe(0)                                // 計數表不殘留已刪 key
+  })
+
+  it('刪除 input/action 不影響 sources 列表', () => {
+    const hub = createHub({ staleAfterMs: 600000 })
+    const st = newState()
+    hub.seenSource('10.0.0.1', Date.now())
+    applyEntries(hub, [udpAt(5160, 5)], 10, st)
+    applyEntries(hub, [udpAt(514, 1)], 10, st)
+    applyEntries(hub, [udpAt(514, 2)], 10, st)
+    expect(hub.snapshot().sources.map((s) => s.ip)).toEqual(['10.0.0.1'])
+  })
+})
