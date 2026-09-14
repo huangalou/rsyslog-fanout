@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs'
+import { closeSync, openSync, readSync, statSync, truncateSync } from 'node:fs'
 import type { HubInternals } from './hub.js'
 
 export interface ImpstatsEntry { name: string; origin: string; values: Record<string, number> }
@@ -113,22 +113,70 @@ export function applyEntries(
   hub.emitStats()
 }
 
+// impstats 的 log.file 沒有輪替機制（rsyslog 以 O_APPEND 持續追加），實機曾累積到 572 MB：
+// 舊版每 tick 整檔 readFileSync 超過 Node 字串上限拋 ERR_STRING_TOO_LONG，被靜默吞掉後
+// Dashboard 永遠空白。現在只讀 offset 之後的增量，並在檔案超過 maxBytes 時截斷歸零——
+// 計數器為累計值（resetCounters="off"），下一個 interval 會重寫完整狀態，截斷不損失語意。
+const DEFAULT_MAX_BYTES = 64 * 1024 * 1024
+
+export interface ImpstatsReaderOptions { maxBytes?: number }
+
+// 只解碼以換行結束的完整行；尾端殘餘以位元組保留。讀取邊界若切在多位元組 UTF-8 字元
+// 中間，先 toString 再暫存會把兩半各自解成 U+FFFD，必須在位元組層面拼回再解碼。
+export function splitCompleteLines(pending: Buffer, delta: Buffer): { lines: string[]; rest: Buffer } {
+  const buf = pending.length ? Buffer.concat([pending, delta]) : delta
+  const lastNl = buf.lastIndexOf(0x0a)
+  if (lastNl < 0) return { lines: [], rest: Buffer.from(buf) }
+  return { lines: buf.toString('utf8', 0, lastNl).split('\n'), rest: Buffer.from(buf.subarray(lastNl + 1)) }
+}
+
 export function createImpstatsReader(
   path: string, hub: HubInternals, intervalMs = 10000, warn?: (msg: string) => void,
+  opts: ImpstatsReaderOptions = {},
 ) {
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES
   const state = createApplyState()
   let offset = 0
+  let pending: Buffer = Buffer.alloc(0) // 尾端尚未以換行結束的半行（位元組），等下一 tick 補齊
+  let ioWarned = false
   let timer: NodeJS.Timeout | null = null
+
+  const truncate = () => { truncateSync(path, 0); offset = 0; pending = Buffer.alloc(0) }
+
+  const readDelta = (from: number, to: number): Buffer => {
+    const buf = Buffer.allocUnsafe(to - from)
+    const fd = openSync(path, 'r')
+    try {
+      let done = 0
+      while (done < buf.length) {
+        const n = readSync(fd, buf, done, buf.length - done, from + done)
+        if (n === 0) break
+        done += n
+      }
+      return buf.subarray(0, done)
+    } finally { closeSync(fd) }
+  }
+
   const tick = () => {
     try {
       const size = statSync(path).size
-      if (size < offset) offset = 0            // 檔案被 rotate/truncate
+      if (size < offset) { offset = 0; pending = Buffer.alloc(0) } // 檔案被外部 rotate/truncate
       if (size === offset) return
-      const text = readFileSync(path, 'utf8').slice(offset)
+      if (size - offset > maxBytes) { truncate(); return } // 增量本身已超過預算（多日未讀）：整批放棄，下一批恢復
+      const { lines, rest } = splitCompleteLines(pending, readDelta(offset, size))
       offset = size
-      const entries = text.split('\n').map(parseImpstatsLine).filter((e): e is ImpstatsEntry => e !== null)
+      pending = rest
+      const entries = lines.map(parseImpstatsLine).filter((e): e is ImpstatsEntry => e !== null)
       if (entries.length) applyEntries(hub, entries, intervalMs / 1000, state, warn)
-    } catch { /* 檔案尚未存在：rsyslog 未啟動前屬正常，靜默略過 */ }
+      // 讀取與截斷之間 rsyslog 追加的行會遺失，至多一個 interval 的部分條目；pruneMissing 容忍單次缺席。
+      if (size > maxBytes) truncate()
+    } catch (err) {
+      // 檔案尚未存在：rsyslog 未啟動前屬正常，靜默略過；其他 I/O 錯誤告警一次
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return
+      if (ioWarned) return
+      ioWarned = true
+      warn?.(`[impstats] 讀取 ${path} 失敗，統計將停止更新：${(err as Error).message}`)
+    }
   }
   return { start: () => { timer = setInterval(tick, intervalMs); tick() }, stop: () => { if (timer) clearInterval(timer) } }
 }
