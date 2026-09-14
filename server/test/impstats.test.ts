@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, appendFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync, appendFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseImpstatsLine, applyEntries, createApplyState, createImpstatsReader } from '../src/monitor/impstats.js'
+import { parseImpstatsLine, applyEntries, createApplyState, createImpstatsReader, splitCompleteLines } from '../src/monitor/impstats.js'
 import { createHub } from '../src/monitor/hub.js'
 
 const newState = createApplyState
@@ -131,6 +131,25 @@ describe('applyEntries → snapshot', () => {
   })
 })
 
+describe('splitCompleteLines', () => {
+  it('多位元組 UTF-8 字元被讀取邊界切開時以位元組暫存，補齊後解碼正確', () => {
+    const line = Buffer.from('{ "name": "café", "origin": "x" }\n')
+    const cut = line.indexOf('é') + 1 // é 佔兩個位元組，切在中間
+    const first = splitCompleteLines(Buffer.alloc(0), line.subarray(0, cut))
+    expect(first.lines).toEqual([])
+    expect(first.rest.length).toBe(cut)
+    const second = splitCompleteLines(first.rest, line.subarray(cut))
+    expect(second.lines).toEqual(['{ "name": "café", "origin": "x" }'])
+    expect(second.rest.length).toBe(0)
+  })
+
+  it('只回傳以換行結束的行，尾端殘餘保留為位元組', () => {
+    const { lines, rest } = splitCompleteLines(Buffer.from('a\nb\n'), Buffer.from('c\npartial'))
+    expect(lines).toEqual(['a', 'b', 'c'])
+    expect(rest.toString()).toBe('partial')
+  })
+})
+
 describe('createImpstatsReader', () => {
   let dir: string
   beforeEach(() => {
@@ -147,9 +166,11 @@ describe('createImpstatsReader', () => {
 
   it('檔案不存在時靜默略過，不拋錯', () => {
     const hub = createHub({ staleAfterMs: 600000 })
-    const reader = createImpstatsReader(join(dir, 'does-not-exist.log'), hub, 50)
+    const warn = vi.fn()
+    const reader = createImpstatsReader(join(dir, 'does-not-exist.log'), hub, 50, warn)
     expect(() => reader.start()).not.toThrow()
     expect(hub.snapshot().inputs).toEqual({})
+    expect(warn).not.toHaveBeenCalled() // rsyslog 尚未啟動屬正常，不告警
     reader.stop()
   })
 
@@ -191,6 +212,70 @@ describe('createImpstatsReader', () => {
     vi.advanceTimersByTime(50)
     expect(hub.snapshot().inputs['tcp:7514'].submitted).toBe(1)
 
+    reader.stop()
+  })
+
+  it('尾端不完整行暫存，下一 tick 補齊後才解析（JSON 中途被切開不遺失）', () => {
+    const hub = createHub({ staleAfterMs: 600000 })
+    const path = join(dir, 'partial.log')
+    const full = tcpFileLine(6514, 42)
+    const cut = full.indexOf('"submitted"') // 切在 JSON 本體內
+    writeFileSync(path, full.slice(0, cut))
+    const reader = createImpstatsReader(path, hub, 50)
+    reader.start()
+    expect(hub.snapshot().inputs).toEqual({})
+    appendFileSync(path, full.slice(cut))
+    vi.advanceTimersByTime(50)
+    expect(hub.snapshot().inputs['tcp:6514'].submitted).toBe(42)
+    reader.stop()
+  })
+
+  it('檔案超過 maxBytes 時先套用本批再截斷歸零，之後追加的內容從頭讀取', () => {
+    const hub = createHub({ staleAfterMs: 600000 })
+    const path = join(dir, 'grow.log')
+    const line = tcpFileLine(6514, 1)
+    writeFileSync(path, line)
+    const reader = createImpstatsReader(path, hub, 50, undefined, { maxBytes: line.length * 2 })
+    reader.start()
+    expect(hub.snapshot().inputs['tcp:6514'].submitted).toBe(1)
+    expect(statSync(path).size).toBe(line.length) // 未超過上限不截斷
+
+    appendFileSync(path, tcpFileLine(6514, 2))
+    appendFileSync(path, tcpFileLine(6514, 3))
+    vi.advanceTimersByTime(50)
+    expect(hub.snapshot().inputs['tcp:6514'].submitted).toBe(3)
+    expect(statSync(path).size).toBe(0)
+
+    appendFileSync(path, tcpFileLine(6514, 4)) // rsyslog 以 O_APPEND 寫入 → 落在新檔尾
+    vi.advanceTimersByTime(50)
+    expect(hub.snapshot().inputs['tcp:6514'].submitted).toBe(4)
+    reader.stop()
+  })
+
+  it('啟動時檔案已遠超 maxBytes（多日未輪替）：不整檔讀入，直接截斷，下一批恢復', () => {
+    const hub = createHub({ staleAfterMs: 600000 })
+    const path = join(dir, 'huge.log')
+    const line = tcpFileLine(6514, 1)
+    writeFileSync(path, line.repeat(50))
+    const reader = createImpstatsReader(path, hub, 50, undefined, { maxBytes: line.length * 2 })
+    reader.start()
+    expect(hub.snapshot().inputs).toEqual({}) // 舊內容整批丟棄，不嘗試讀入
+    expect(statSync(path).size).toBe(0)
+
+    appendFileSync(path, tcpFileLine(6514, 7))
+    vi.advanceTimersByTime(50)
+    expect(hub.snapshot().inputs['tcp:6514'].submitted).toBe(7)
+    reader.stop()
+  })
+
+  it('讀取發生非 ENOENT 錯誤時經 warn 告警一次，不靜默吞掉', () => {
+    const hub = createHub({ staleAfterMs: 600000 })
+    const warn = vi.fn()
+    const reader = createImpstatsReader(dir, hub, 50, warn) // 路徑是目錄 → EISDIR
+    reader.start()
+    vi.advanceTimersByTime(150)
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0][0])).toMatch(/EISDIR/)
     reader.stop()
   })
 })
