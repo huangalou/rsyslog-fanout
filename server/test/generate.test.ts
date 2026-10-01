@@ -49,6 +49,15 @@ describe('generateConf', () => {
     expect(out).toContain('module(load="imtcp")')
     expect(out).not.toContain('module(load="imudp")')
   })
+  it('無任何 enabled input 時輸出 /dev/null 佔位 action（避免 rsyslogd -N1 因 no active actions 而失敗）', () => {
+    const PLACEHOLDER = 'action(type="omfile" file="/dev/null")'
+    expect(generateConf({ inputs: [], destinations: [], routes: [] }, opts)).toContain(PLACEHOLDER)
+    const allDisabled = { ...cfg, inputs: [{ ...cfg.inputs[0], enabled: false }] }
+    expect(generateConf(allDisabled, opts)).toContain(PLACEHOLDER)
+  })
+  it('有 enabled input 時不輸出佔位 action', () => {
+    expect(generateConf(cfg, opts)).not.toContain('file="/dev/null"')
+  })
   it('同時有 udp 與 tcp input 時兩個模組都載入', () => {
     const c = {
       ...cfg,

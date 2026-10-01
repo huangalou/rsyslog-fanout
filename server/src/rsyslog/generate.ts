@@ -52,6 +52,13 @@ export function generateConf(cfg: FanoutConfig, opts: GenOpts): string {
     }
     L.push('}')
   }
+  // 無任何 enabled input 時整份設定沒有 action，rsyslogd -N1 會以 error -2103
+  // （no active actions configured）判定無效，導致刪光 input 後永遠無法套用。
+  // 補一個寫入 /dev/null 的佔位 action；omdiscard / stop 皆不被視為 active action（實機驗證）。
+  if (enabledInputs.length === 0) {
+    L.push('')
+    L.push('action(type="omfile" file="/dev/null")')
+  }
   return L.join('\n') + '\n'
 }
 
