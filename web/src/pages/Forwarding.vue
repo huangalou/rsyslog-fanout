@@ -11,6 +11,7 @@ import RouteFilterForm, { type RouteFilterValue } from '../components/RouteFilte
 
 type Protocol = 'udp' | 'tcp'
 type HeaderMode = 'raw' | 'standard'
+type TlsMode = 'off' | 'verify' | 'anon'
 
 interface Input {
   id: number
@@ -27,6 +28,8 @@ interface Destination {
   port: number
   headerMode: HeaderMode
   enabled: boolean
+  tlsMode: TlsMode
+  tlsPeerName: string | null
 }
 interface RouteRule {
   id: number
@@ -53,6 +56,7 @@ const destColumns = computed<EntityTableColumn[]>(() => [
   { key: 'protocol', label: t('common.protocol') },
   { key: 'hostPort', label: t('forwarding.hostPortCol') },
   { key: 'headerMode', label: t('forwarding.headerMode') },
+  { key: 'tls', label: t('forwarding.tlsCol') },
   { key: 'enabled', label: t('common.enabled') },
 ])
 
@@ -73,11 +77,18 @@ const destForm = ref({
   port: 514,
   headerMode: 'raw' as HeaderMode,
   enabled: true,
+  tlsMode: 'off' as TlsMode,
+  tlsPeerName: '',
 })
 
 function resetDestForm() {
-  destForm.value = { name: '', protocol: 'udp', host: '', port: 514, headerMode: 'raw', enabled: true }
+  destForm.value = { name: '', protocol: 'udp', host: '', port: 514, headerMode: 'raw', enabled: true, tlsMode: 'off', tlsPeerName: '' }
   editingDestId.value = null
+}
+
+// TLS 只跑在 tcp 上：切到 udp 時一併重設，避免送出 server 會拒絕的組合
+function onDestProtocolChange() {
+  if (destForm.value.protocol !== 'tcp') destForm.value = { ...destForm.value, tlsMode: 'off', tlsPeerName: '' }
 }
 
 function openAddDest() {
@@ -95,6 +106,8 @@ function openEditDest(row: Destination) {
     port: row.port,
     headerMode: row.headerMode,
     enabled: row.enabled,
+    tlsMode: row.tlsMode,
+    tlsPeerName: row.tlsPeerName ?? '',
   }
   destErrorMsg.value = ''
   showDestForm.value = true
@@ -115,6 +128,9 @@ async function submitDest() {
     port: destForm.value.port,
     headerMode: destForm.value.headerMode,
     enabled: destForm.value.enabled,
+    tlsMode: destForm.value.tlsMode,
+    // 憑證名稱只在 verify 模式有意義；留空送 null，由 server 以 host 比對
+    tlsPeerName: (destForm.value.tlsMode === 'verify' && destForm.value.tlsPeerName.trim()) || null,
   }
   try {
     if (editingDestId.value !== null) {
@@ -276,7 +292,7 @@ onMounted(loadAll)
         </label>
         <label>
           {{ t('common.protocol') }}
-          <select data-test="dest-protocol" v-model="destForm.protocol">
+          <select data-test="dest-protocol" v-model="destForm.protocol" @change="onDestProtocolChange">
             <option value="udp">udp</option>
             <option value="tcp">tcp</option>
           </select>
@@ -300,6 +316,22 @@ onMounted(loadAll)
             <span><code>standard</code>{{ t('forwarding.headerModeStandard') }}</span>
           </label>
         </fieldset>
+        <label :class="{ 'is-disabled': destForm.protocol !== 'tcp' }">
+          {{ t('forwarding.tlsMode') }}
+          <select data-test="dest-tlsMode" v-model="destForm.tlsMode" :disabled="destForm.protocol !== 'tcp'">
+            <option value="off">{{ t('forwarding.tlsOff') }}</option>
+            <option value="verify">{{ t('forwarding.tlsVerify') }}</option>
+            <option value="anon">{{ t('forwarding.tlsAnon') }}</option>
+          </select>
+        </label>
+        <label v-if="destForm.tlsMode === 'verify'">
+          {{ t('forwarding.tlsPeerName') }}
+          <input data-test="dest-tlsPeerName" v-model="destForm.tlsPeerName" type="text" :placeholder="destForm.host" />
+          <span class="field-hint">{{ t('forwarding.tlsPeerNameHint') }}</span>
+        </label>
+        <p v-if="destForm.tlsMode === 'anon'" class="tls-warning" role="alert" data-test="dest-tls-anon-warning">
+          {{ t('forwarding.tlsAnonWarning') }}
+        </p>
         <label class="toggle">
           <input data-test="dest-enabled" v-model="destForm.enabled" type="checkbox" />
           {{ t('common.enabled') }}
@@ -314,6 +346,11 @@ onMounted(loadAll)
       <EntityTable v-else :columns="destColumns" :rows="destinations">
         <template #cell-hostPort="{ row }">{{ row.host }}:{{ row.port }}</template>
         <template #cell-headerMode="{ row }">{{ row.headerMode }}</template>
+        <template #cell-tls="{ row }">
+          <span v-if="row.tlsMode === 'verify'" class="tls-badge" data-test="dest-tls-verify">verify</span>
+          <span v-else-if="row.tlsMode === 'anon'" class="tls-badge tls-badge-warn" data-test="dest-tls-anon" :title="t('forwarding.tlsAnonWarning')">anon</span>
+          <span v-else class="tls-none">—</span>
+        </template>
         <template #cell-enabled="{ row }">{{ row.enabled ? t('common.yes') : t('common.no') }}</template>
         <template #actions="{ row }">
           <button type="button" data-test="dest-edit" @click="openEditDest(row)">{{ t('common.edit') }}</button>
@@ -552,5 +589,45 @@ onMounted(loadAll)
   font-size: 0.8rem;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.entity-form label.is-disabled {
+  opacity: 0.5;
+}
+
+.field-hint {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.tls-warning {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border-left: 3px solid var(--color-warn);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-sm);
+  color: var(--color-warn);
+}
+
+.tls-badge {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 0.1rem var(--space-sm);
+  border: 1px solid var(--color-ok);
+  border-radius: var(--radius-sm);
+  color: var(--color-ok);
+}
+
+.tls-badge-warn {
+  border-color: var(--color-warn);
+  color: var(--color-warn);
+}
+
+.tls-none {
+  color: var(--color-text-muted);
 }
 </style>

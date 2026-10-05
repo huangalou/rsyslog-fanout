@@ -21,8 +21,8 @@ cd docker && docker compose up -d --build
 
 | 實體 | 說明 |
 |---|---|
-| **Input（接收）** | 監聽埠（`udp`/`tcp`），接收設備送來的 syslog。埠號須落在 `FANOUT_PORT_RANGE` 範圍內。 |
-| **Destination（目的地）** | 轉發目標（`host:port`、`udp`/`tcp`），有一個**表頭模式**： |
+| **Input（接收）** | 監聽埠（`udp`/`tcp`），接收設備送來的 syslog。埠號須落在 `FANOUT_PORT_RANGE` 範圍內。`tcp` input 可要求 TLS。 |
+| **Destination（目的地）** | 轉發目標（`host:port`、`udp`/`tcp`，可走 TLS），有一個**表頭模式**： |
 | — `raw`（預設） | 透明轉發——原樣轉發 `%rawmsg%`，位元組級不變。 |
 | — `standard` | 重寫表頭為 RFC 3164 格式，但保留原始 timestamp/hostname。 |
 | **Route（路由規則）** | Input → Destination 的對應，可選過濾條件：來源 IP/CIDR、facility（多選）、最低 severity。不設過濾即全轉。 |
@@ -69,11 +69,43 @@ cyberrange gen \
 
 已完成端到端實測（2026-08-15）：CyberRange 產生的 FortiOS key-value、CEF、RFC 3164 三種格式，經 FanOut 轉發後在下游接收端與送出內容 byte-identical（`headerMode: raw`），Live Tail 亦正確解析 facility/severity。
 
+## TLS
+
+收、送兩端都支援 syslog over TLS（RFC 5425），僅限 `tcp`。TLS 與明文 input 可並存。
+
+**憑證檔一律掛進容器，不經 WebUI 上傳**（WebUI 是明文 HTTP，私鑰不該經過它）。把檔案放在 `/data/tls`（可用 `FANOUT_TLS_DIR` 覆寫）：
+
+| 檔案 | 用途 | 必要性 |
+|---|---|---|
+| `cert.pem` + `key.pem` | TLS input 出示的伺服器憑證 | 有啟用的 TLS input 時必須 |
+| `ca.pem` | 驗證 TLS destination 用的 CA bundle | 選用；預設用系統信任庫 |
+
+```bash
+docker cp cert.pem rsyslog-fanout:/data/tls/cert.pem
+docker cp key.pem  rsyslog-fanout:/data/tls/key.pem
+docker cp ca.pem   rsyslog-fanout:/data/tls/ca.pem    # 只有私有 CA 才需要
+```
+
+接著在 WebUI：
+
+- **接收設定**——協定選 `tcp` 並勾選**啟用 TLS**。表單會顯示伺服器憑證是否就緒；未就緒時套用會被擋下（`TLS_CERT_MISSING`）。不要求用戶端憑證。
+- **目的地**——協定選 `tcp`，再選 TLS 模式：
+  - **驗證憑證**（建議）：對方憑證必須能串到受信任的 CA，**且**名稱相符。名稱預設取「主機」欄位；以 IP 連線、但憑證簽給 DNS 名稱時，請填**憑證名稱**（憑證裡的 IP 位址不會被拿來比對）。
+  - **只加密、不驗證**：給自簽憑證的實驗環境用，不確認對方身分。
+
+注意事項：
+
+- 更換憑證檔後，按一次**套用**（或重啟容器）rsyslog 才會讀到新檔。
+- `ca.pem` 會**取代**系統信任庫。要同時信任公有 CA 與私有 CA，請把兩者串接成一個檔。
+- `cert.pem` / `key.pem` 存在時，TLS destination 若要求用戶端憑證，rsyslog 會出示同一張。
+- 標準的 syslog-TLS 埠 `6514` 不在預設的 `FANOUT_PORT_RANGE` 內；需要的話請加進該變數與 `docker-compose.yml` 的發布埠（見[埠範圍限制](#埠範圍限制)）。
+
 ## 已知限制
 
 - **套用設定時有小於 1 秒的中斷。** rsyslog 不支援熱載入新的監聽埠，因此套用設定必須重啟 rsyslogd（通常 <1 秒）。TCP 來源會自動重連；該瞬間傳輸中的 UDP 封包會遺失——這是 rsyslog 本身的特性，並非本工具的 bug。
 - **relay 封包來源 IP。** 如同任何 relay，下游收到的封包在網路層的來源 IP 會是**本工具**的 IP，而非原始設備的 IP。若下游系統是依 syslog 表頭內的 hostname 欄位判斷來源，則不受此限制影響。
-- **尚未支援 TLS / RELP。** 目前僅支援明文 UDP/TCP 傳輸；加密/可靠傳輸列為後續版本規劃。
+- **尚未支援 RELP。** 傳輸方式為 UDP、TCP，或 TCP 加 TLS。
+- **TLS 的範圍。** TLS input 不驗證用戶端憑證（要限制來源請用路由的來源過濾或網路層管控）。所有 TLS destination 共用同一份 CA bundle 與同一張用戶端憑證。
 - **WebUI 僅為 HTTP。** session cookie 已設 `httpOnly` + `sameSite=strict`，但**未**設定 `secure` flag，因為伺服器本身不終止 TLS。若需要 HTTPS（例如將 WebUI 開放給非受信任的內網以外環境），請在前方掛一個反向代理（nginx、Caddy、Traefik 等）並在該處終止 TLS。
 
 ## 環境變數
@@ -84,6 +116,7 @@ cyberrange gen \
 | `FANOUT_PORT_RANGE` | `514,5140-5199` | 逗號分隔的埠號/範圍清單，WebUI 只允許在此範圍內開新 input。須與 `docker-compose.yml` 中發布的埠一致。 |
 | `FANOUT_STALE_MINUTES` | `10` | 來源 IP 沉默超過此分鐘數後，於 Sources 頁標示為疑似斷訊。 |
 | `FANOUT_DATA_DIR` | `/data` | 存放 SQLite 設定庫、產生的 rsyslog conf、設定備份的目錄。 |
+| `FANOUT_TLS_DIR` | `$FANOUT_DATA_DIR/tls` | 放 `cert.pem`、`key.pem` 與選用的 `ca.pem` 的目錄（見 [TLS](#tls)）。可以是唯讀掛載。 |
 | `FANOUT_HTTP_PORT` | `8080` | 管理 WebUI/API 監聽埠。 |
 | `FANOUT_TAIL_PORT` | `15514` | 僅供內部 loopback 使用的 UDP 埠，用於將收到訊息的副本串流至 Live Tail，不對外發布。 |
 | `RSYSLOGD_BIN` | `rsyslogd` | rsyslogd 執行檔路徑（若不在 `PATH` 中時使用）。 |
@@ -92,7 +125,7 @@ cyberrange gen \
 
 ## Volume 說明
 
-- `/data`（compose 檔中的具名 volume `fanout-data`）——SQLite 資料庫、產生的 rsyslog 設定、套用前的設定備份。這是設定的單一真相來源；若在意重建時不用重新輸入 input/destination/route，請備份此 volume。
+- `/data`（compose 檔中的具名 volume `fanout-data`）——SQLite 資料庫、產生的 rsyslog 設定、套用前的設定備份。這是設定的單一真相來源；若在意重建時不用重新輸入 input/destination/route，請備份此 volume。TLS 憑證檔預設放在 `/data/tls`，所以同一個 volume 裡也有你的私鑰，備份請比照處理。
 
 ## 開發指南
 
@@ -121,6 +154,8 @@ cd ../e2e && npm install && npx playwright test
 ```
 
 E2E 測試套件以 Playwright 覆蓋主要 UI 流程（登入、設定 input/destination/route、套用、dashboard/live-tail 斷言、各斷點響應式截圖），並另外執行 `e2e/scripts/transparency-test.sh`——一個位元組級驗證：送一則 syslog 訊息完整跑過 input → route → destination 這條管線，並斷言下游收到的位元組與送出時**完全一致**。這個「預設透明、不改動一個位元組」的保證是本專案的招牌賣點，因此驗證做到位元組級，而不只是「訊息有沒有送到」。
+
+`e2e/scripts/tls-test.sh` 以同樣的方式驗證 TLS：現場產生一次性的 CA 與憑證，讓訊息依序經過 TLS input、會驗證憑證的 TLS destination、第二個 TLS input，確認送達內容 byte-identical；再把預期的憑證名稱改錯，確認訊息**不會**送達。容器內若已有 TLS 檔案，腳本會拒絕執行；結束時會清掉自己建立的所有東西。
 
 ## License
 

@@ -19,4 +19,11 @@ describe('loadEnv', () => {
     expect(e.dataDir).toBe('/data')
     expect(e.portRange).toContain(514)
   })
+  it('tlsDir 預設為資料目錄下的 tls', () => {
+    expect(loadEnv({ FANOUT_ADMIN_PASSWORD: 'pw' }).tlsDir).toBe('/data/tls')
+    expect(loadEnv({ FANOUT_ADMIN_PASSWORD: 'pw', FANOUT_DATA_DIR: '/srv/fanout' }).tlsDir).toBe('/srv/fanout/tls')
+  })
+  it('FANOUT_TLS_DIR 可覆寫 tlsDir', () => {
+    expect(loadEnv({ FANOUT_ADMIN_PASSWORD: 'pw', FANOUT_TLS_DIR: '/run/secrets/tls' }).tlsDir).toBe('/run/secrets/tls')
+  })
 })

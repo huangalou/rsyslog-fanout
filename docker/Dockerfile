@@ -24,8 +24,9 @@ ARG TARGETARCH
 # 版本用 22 而非 brief 原訂的 20：server 的 better-sqlite3@13.0.3 package.json 宣告 engines.node >=22，
 # 其官方 prebuild 二進位在 Node 20 下實測會 segfault（在乾淨的 node:20-slim 容器裡就能重現，
 # 與本專案的 s6/nodesource 設定無關），換成 Node 22 後即正常，且仍滿足 server/package.json 的 engines >=20。
+# rsyslog-gnutls 提供 gtls netstream driver，TLS input / destination 需要它（未使用 TLS 時不會被載入）。
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      rsyslog xz-utils ca-certificates curl gnupg && \
+      rsyslog rsyslog-gnutls xz-utils ca-certificates curl gnupg && \
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*

@@ -15,6 +15,9 @@ export type ErrorCode =
   | 'APPLY_FAILED'
   | 'NAME_IN_USE'
   | 'ROUTE_EXISTS'
+  | 'TLS_REQUIRES_TCP'
+  | 'TLS_PEER_NAME_FORMAT'
+  | 'TLS_CERT_MISSING'
   | 'INTERNAL'
 
 export type ErrorParams = Record<string, string | number>
@@ -46,6 +49,9 @@ const MESSAGES: Record<ErrorCode, string> = {
   APPLY_FAILED: 'Apply failed',
   NAME_IN_USE: 'Name already in use',
   ROUTE_EXISTS: 'A route between this input and destination already exists',
+  TLS_REQUIRES_TCP: 'TLS is only available with the tcp protocol',
+  TLS_PEER_NAME_FORMAT: 'Certificate name may only contain letters, digits, dots, hyphens, and * wildcards',
+  TLS_CERT_MISSING: 'TLS inputs need a server certificate: put a valid cert.pem and its key.pem in {dir}',
   INTERNAL: 'Internal server error',
 }
 

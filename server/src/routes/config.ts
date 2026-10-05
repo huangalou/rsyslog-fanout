@@ -8,7 +8,9 @@ let lastResult: ApplyResult | null = null
 export async function configRoutes(app: FastifyInstance) {
   app.post('/api/config/apply', async () => {
     lastResult = await app.deps.apply()
-    return lastResult.applied ? ok(lastResult) : fail('APPLY_FAILED', undefined, lastResult.error)
+    if (lastResult.applied) return ok(lastResult)
+    if (lastResult.stage === 'precheck') return fail(lastResult.code, { dir: app.deps.env.tlsDir })
+    return fail('APPLY_FAILED', undefined, lastResult.error)
   })
   app.get('/api/config/status', async () => {
     const { repo } = app.deps

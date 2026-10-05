@@ -9,6 +9,7 @@ import { openDb } from './db/db.js'
 import { createRepo } from './domain/repo.js'
 import { buildApp } from './app.js'
 import { applyConfig } from './rsyslog/apply.js'
+import { resolveTlsFiles } from './rsyslog/tls.js'
 import { createHub } from './monitor/hub.js'
 import { createImpstatsReader } from './monitor/impstats.js'
 import { createTailListener } from './monitor/tail.js'
@@ -22,6 +23,9 @@ const run = async (cmd: string, args: string[]) => {
 async function main() {
   const env = loadEnv(process.env)
   for (const d of ['rsyslog', 'queues', 'stats']) mkdirSync(join(env.dataDir, d), { recursive: true })
+  // TLS 目錄先建好，操作者才能直接 docker cp 憑證進來；指向唯讀掛載時建不出來屬正常，不視為錯誤
+  try { mkdirSync(env.tlsDir, { recursive: true }) }
+  catch (e) { console.error(`[tls] 無法建立 ${env.tlsDir}（若為唯讀掛載可忽略）: ${(e as Error).message}`) }
   const repo = createRepo(openDb(join(env.dataDir, 'fanout.db')))
   if (!repo.getPasswordHash()) repo.setPasswordHash(bcrypt.hashSync(env.adminPassword, 10))
 
@@ -45,6 +49,7 @@ async function main() {
     repo, env, monitor: hub, tailRing: tail.ring,
     apply: () => applyConfig({
       repo, paths, genOpts: { tailPort: env.tailPort, dataDir: env.dataDir },
+      resolveTls: () => resolveTlsFiles(env.tlsDir),
       validate: (p) => run(env.rsyslogdBin, ['-N1', '-f', p]),
       restart,
     }),

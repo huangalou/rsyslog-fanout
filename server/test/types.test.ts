@@ -62,3 +62,46 @@ describe('host IPv6 zone-id 拒絕', () => {
     expect(r.success).toBe(false)
   })
 })
+
+describe('TLS 欄位', () => {
+  const input = { name: 'n1', protocol: 'tcp', port: 5140, enabled: true }
+  const dest = { name: 'd', protocol: 'tcp', host: 'siem.example.com', port: 6514, enabled: true }
+  const firstMessage = (r: { success: boolean; error?: { issues: Array<{ message: string }> } }) => r.error?.issues[0].message
+
+  it('input 未帶 tls 時預設 false（舊的 API 呼叫方不需修改）', () => {
+    expect(InputCreateSchema.parse(input).tls).toBe(false)
+  })
+  it('tcp input 可啟用 tls', () => {
+    expect(InputCreateSchema.parse({ ...input, tls: true }).tls).toBe(true)
+  })
+  it('udp input 啟用 tls 時以 TLS_REQUIRES_TCP 拒絕', () => {
+    const r = InputCreateSchema.safeParse({ ...input, protocol: 'udp', tls: true })
+    expect(r.success).toBe(false)
+    expect(firstMessage(r)).toBe('TLS_REQUIRES_TCP')
+  })
+  it('destination 未帶 TLS 欄位時預設 tlsMode=off、tlsPeerName=null', () => {
+    const r = DestinationCreateSchema.parse(dest)
+    expect(r.tlsMode).toBe('off')
+    expect(r.tlsPeerName).toBeNull()
+  })
+  it.each(['verify', 'anon'])('tcp destination 可設 tlsMode=%s', (mode) => {
+    expect(DestinationCreateSchema.parse({ ...dest, tlsMode: mode }).tlsMode).toBe(mode)
+  })
+  it.each(['verify', 'anon'])('udp destination 設 tlsMode=%s 時以 TLS_REQUIRES_TCP 拒絕', (mode) => {
+    const r = DestinationCreateSchema.safeParse({ ...dest, protocol: 'udp', tlsMode: mode })
+    expect(r.success).toBe(false)
+    expect(firstMessage(r)).toBe('TLS_REQUIRES_TCP')
+  })
+  it('未知的 tlsMode 拒絕', () => {
+    expect(DestinationCreateSchema.safeParse({ ...dest, tlsMode: 'strict' }).success).toBe(false)
+  })
+  it.each(['siem.example.com', '*.example.com', 'siem-01'])('合法 tlsPeerName 通過：%s', (name) => {
+    const r = DestinationCreateSchema.safeParse({ ...dest, tlsMode: 'verify', tlsPeerName: name })
+    expect(r.success).toBe(true)
+  })
+  it.each(['a" x="1', 'a\nb', 'a b', '', 'a,b'])('非法 tlsPeerName 以 TLS_PEER_NAME_FORMAT 拒絕（防止跳出 conf 屬性）：%j', (name) => {
+    const r = DestinationCreateSchema.safeParse({ ...dest, tlsMode: 'verify', tlsPeerName: name })
+    expect(r.success).toBe(false)
+    expect(firstMessage(r)).toBe('TLS_PEER_NAME_FORMAT')
+  })
+})

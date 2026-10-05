@@ -12,6 +12,7 @@ import { authRoutes, makeSessions } from './routes/auth.js'
 import { crudRoutes } from './routes/crud.js'
 import { configRoutes } from './routes/config.js'
 import { statsRoutes } from './routes/stats.js'
+import { tlsRoutes } from './routes/tls.js'
 import { wsRoutes } from './routes/ws.js'
 
 export interface AppDeps {
@@ -59,6 +60,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.register(crudRoutes)
   app.register(configRoutes)
   app.register(statsRoutes)
+  app.register(tlsRoutes)
   app.register(wsRoutes)
   return app
 }

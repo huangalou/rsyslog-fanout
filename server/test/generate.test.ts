@@ -4,17 +4,19 @@ import { generateConf, configHash } from '../src/rsyslog/generate.js'
 import type { FanoutConfig } from '../src/domain/types.js'
 
 const cfg: FanoutConfig = {
-  inputs: [{ id: 1, name: 'net', protocol: 'udp', port: 514, enabled: true }],
+  inputs: [{ id: 1, name: 'net', protocol: 'udp', port: 514, enabled: true, tls: false }],
   destinations: [
-    { id: 1, name: 'arcsight', protocol: 'udp', host: '10.0.0.5', port: 514, headerMode: 'raw', enabled: true },
-    { id: 2, name: 'backup', protocol: 'tcp', host: '10.0.0.6', port: 1514, headerMode: 'standard', enabled: true },
+    { id: 1, name: 'arcsight', protocol: 'udp', host: '10.0.0.5', port: 514, headerMode: 'raw', enabled: true, tlsMode: 'off', tlsPeerName: null },
+    { id: 2, name: 'backup', protocol: 'tcp', host: '10.0.0.6', port: 1514, headerMode: 'standard', enabled: true, tlsMode: 'off', tlsPeerName: null },
   ],
   routes: [
     { id: 1, inputId: 1, destinationId: 1, sourceFilter: null, facilities: null, maxSeverity: null },
     { id: 2, inputId: 1, destinationId: 2, sourceFilter: '10.1.0.0/16', facilities: [16, 17], maxSeverity: 4 },
   ],
 }
-const opts = { tailPort: 15514, dataDir: '/data' }
+// 憑證檔俱全但設定沒用到 TLS：既有案例（含 golden）都以此 opts 產生，等於同時驗證「沒用 TLS 就不輸出任何 TLS 內容」
+const tlsFiles = { caFile: '/data/tls/ca.pem', certFile: '/data/tls/cert.pem', keyFile: '/data/tls/key.pem' }
+const opts = { tailPort: 15514, dataDir: '/data', tls: tlsFiles }
 
 describe('generateConf', () => {
   it('完整組合逐字符合 golden file', () => {
@@ -61,10 +63,95 @@ describe('generateConf', () => {
   it('同時有 udp 與 tcp input 時兩個模組都載入', () => {
     const c = {
       ...cfg,
-      inputs: [...cfg.inputs, { id: 2, name: 'tcp-net', protocol: 'tcp' as const, port: 1514, enabled: true }],
+      inputs: [...cfg.inputs, { id: 2, name: 'tcp-net', protocol: 'tcp' as const, port: 1514, enabled: true, tls: false }],
     }
     const out = generateConf(c, opts)
     expect(out).toContain('module(load="imudp")')
     expect(out).toContain('module(load="imtcp")')
+  })
+})
+
+describe('generateConf：TLS', () => {
+  const TLS_GLOBAL = 'global(workDirectory="/data/queues" defaultNetstreamDriverCAFile="/data/tls/ca.pem" defaultNetstreamDriverCertFile="/data/tls/cert.pem" defaultNetstreamDriverKeyFile="/data/tls/key.pem")'
+  const tlsInput = { id: 2, name: 'tls-in', protocol: 'tcp' as const, port: 6514, enabled: true, tls: true }
+  const withTlsDest = (over: Partial<FanoutConfig['destinations'][number]>): FanoutConfig => ({
+    ...cfg,
+    destinations: [cfg.destinations[0], { ...cfg.destinations[1], tlsMode: 'verify', ...over }],
+    routes: [{ id: 2, inputId: 1, destinationId: 2, sourceFilter: null, facilities: null, maxSeverity: null }],
+  })
+
+  it('TLS input 輸出逐 input 的 gtls 參數，並於 global 帶入 CA 與伺服器憑證', () => {
+    const out = generateConf({ ...cfg, inputs: [tlsInput] }, opts)
+    expect(out).toContain('input(type="imtcp" port="6514" ruleset="rs_i2" streamDriver.name="gtls" streamDriver.mode="1" streamDriver.authMode="anon")')
+    expect(out.split('\n')[0]).toBe(TLS_GLOBAL)
+  })
+  it('明文 tcp input 與 TLS input 並存時，明文那條不帶 TLS 參數', () => {
+    const plain = { id: 3, name: 'plain-tcp', protocol: 'tcp' as const, port: 5140, enabled: true, tls: false }
+    const out = generateConf({ ...cfg, inputs: [tlsInput, plain] }, opts)
+    expect(out).toContain('input(type="imtcp" port="5140" ruleset="rs_i3")')
+  })
+  it('停用的 TLS input 不觸發任何 TLS 輸出', () => {
+    const out = generateConf({ ...cfg, inputs: [cfg.inputs[0], { ...tlsInput, enabled: false }] }, opts)
+    expect(out).not.toContain('NetstreamDriver')
+    expect(out).not.toContain('streamDriver')
+  })
+  it('verify 模式未指定 tlsPeerName 時，以 host 作為憑證須符合的名稱', () => {
+    const out = generateConf(withTlsDest({}), opts)
+    expect(out).toContain('protocol="tcp" StreamDriver="gtls" StreamDriverMode="1" StreamDriverAuthMode="x509/name" StreamDriverPermittedPeers="10.0.0.6" template="t_std"')
+  })
+  it('verify 模式指定 tlsPeerName 時以它為準（連線目標仍是 host）', () => {
+    const out = generateConf(withTlsDest({ tlsPeerName: 'siem.example.com' }), opts)
+    expect(out).toContain('target="10.0.0.6"')
+    expect(out).toContain('StreamDriverAuthMode="x509/name" StreamDriverPermittedPeers="siem.example.com"')
+  })
+  it('anon 模式只加密、不輸出 PermittedPeers（即使殘留 tlsPeerName）', () => {
+    const out = generateConf(withTlsDest({ tlsMode: 'anon', tlsPeerName: 'siem.example.com' }), opts)
+    expect(out).toContain('StreamDriver="gtls" StreamDriverMode="1" StreamDriverAuthMode="anon" template=')
+    expect(out).not.toContain('StreamDriverPermittedPeers')
+  })
+  it('只有 TLS destination 且沒有伺服器憑證時，global 只帶 CA', () => {
+    const out = generateConf(withTlsDest({}), { ...opts, tls: { caFile: '/etc/ssl/certs/ca-certificates.crt', certFile: null, keyFile: null } })
+    expect(out.split('\n')[0]).toBe('global(workDirectory="/data/queues" defaultNetstreamDriverCAFile="/etc/ssl/certs/ca-certificates.crt")')
+  })
+  it('TLS destination 停用或沒有任何路由指向它時，不輸出 TLS global', () => {
+    const disabled = withTlsDest({ enabled: false })
+    const unrouted = { ...withTlsDest({}), routes: [] }
+    expect(generateConf(disabled, opts)).not.toContain('NetstreamDriver')
+    expect(generateConf(unrouted, opts)).not.toContain('NetstreamDriver')
+  })
+  it('udp 搭配 TLS 欄位（schema 已擋，此為最後防線）不輸出 TLS 參數', () => {
+    const udpTlsInput = { ...cfg.inputs[0], tls: true }
+    const out = generateConf({ ...withTlsDest({ protocol: 'udp' }), inputs: [udpTlsInput] }, opts)
+    expect(out).not.toContain('treamDriver')
+  })
+})
+
+describe('configHash：TLS 欄位的向後相容', () => {
+  // 升級前的設定物件沒有 TLS 欄位；升級後同一份設定多了預設值，雜湊必須相同，
+  // 否則所有既有安裝升級後都會被判定為「未套用變更」
+  const legacy = {
+    inputs: [{ id: 1, name: 'net', protocol: 'udp', port: 514, enabled: true }],
+    destinations: [{ id: 1, name: 'arcsight', protocol: 'tcp', host: '10.0.0.5', port: 514, headerMode: 'raw', enabled: true }],
+    routes: [{ id: 1, inputId: 1, destinationId: 1, sourceFilter: null, facilities: null, maxSeverity: null }],
+  } as unknown as FanoutConfig
+  const upgraded: FanoutConfig = {
+    inputs: [{ ...legacy.inputs[0], tls: false }],
+    destinations: [{ ...legacy.destinations[0], tlsMode: 'off', tlsPeerName: null }],
+    routes: legacy.routes,
+  }
+
+  it('新欄位皆為預設值時，雜湊與升級前相同', () => {
+    expect(configHash(upgraded)).toBe(configHash(legacy))
+  })
+  it('input 啟用 tls 會改變雜湊', () => {
+    const c = { ...upgraded, inputs: [{ ...upgraded.inputs[0], protocol: 'tcp' as const, tls: true }] }
+    const plainTcp = { ...upgraded, inputs: [{ ...upgraded.inputs[0], protocol: 'tcp' as const }] }
+    expect(configHash(c)).not.toBe(configHash(plainTcp))
+  })
+  it('destination 的 tlsMode 或 tlsPeerName 變動會改變雜湊', () => {
+    const verify = { ...upgraded, destinations: [{ ...upgraded.destinations[0], tlsMode: 'verify' as const }] }
+    const named = { ...upgraded, destinations: [{ ...upgraded.destinations[0], tlsMode: 'verify' as const, tlsPeerName: 'siem' }] }
+    expect(configHash(verify)).not.toBe(configHash(upgraded))
+    expect(configHash(named)).not.toBe(configHash(verify))
   })
 })

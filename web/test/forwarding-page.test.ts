@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 const gets: Record<string, unknown> = {
-  '/api/inputs': [{ id: 1, name: 'net', protocol: 'udp', port: 514, enabled: true }],
-  '/api/destinations': [{ id: 1, name: 'arcsight', protocol: 'udp', host: '10.0.0.5', port: 514, headerMode: 'raw', enabled: true }],
+  '/api/inputs': [{ id: 1, name: 'net', protocol: 'udp', port: 514, enabled: true, tls: false }],
+  '/api/destinations': [{ id: 1, name: 'arcsight', protocol: 'udp', host: '10.0.0.5', port: 514, headerMode: 'raw', enabled: true, tlsMode: 'off', tlsPeerName: null }],
   '/api/routes': [], '/api/config/status': { dirty: true, lastResult: null },
 }
 vi.mock('../src/api/client', () => ({
@@ -26,8 +26,10 @@ const mountPage = async () => {
   return w
 }
 
+const defaultDestinations = gets['/api/destinations']
 beforeEach(() => {
   gets['/api/routes'] = []
+  gets['/api/destinations'] = defaultDestinations
   vi.mocked(api.get).mockClear()
   vi.mocked(api.post).mockReset()
   vi.mocked(api.post).mockResolvedValue({ applied: true })
@@ -77,6 +79,7 @@ describe('Destinations CRUD', () => {
     await flushPromises()
     expect(api.post).toHaveBeenCalledWith('/api/destinations', {
       name: 'siem', protocol: 'tcp', host: '10.9.9.9', port: 6514, headerMode: 'standard', enabled: true,
+      tlsMode: 'off', tlsPeerName: null,
     })
     expect(w.find('form.entity-form').exists()).toBe(false)
     expect(vi.mocked(api.get).mock.calls.filter(([u]) => u === '/api/destinations')).toHaveLength(2)
@@ -232,5 +235,93 @@ describe('Apply 失敗回饋', () => {
   it('dirty 狀態顯示「尚未套用變更」徽章', async () => {
     const w = await mountPage()
     expect(w.find('[data-test="dirty-badge"]').exists()).toBe(true)
+  })
+})
+
+describe('Destinations：TLS', () => {
+  const openAddDest = async (protocol: 'udp' | 'tcp') => {
+    const w = await mountPage()
+    await w.find('[data-test="add-dest"]').trigger('click')
+    await w.find('[data-test="dest-name"]').setValue('siem')
+    await w.find('[data-test="dest-protocol"]').setValue(protocol)
+    await w.find('[data-test="dest-host"]').setValue('10.9.9.9')
+    await w.find('[data-test="dest-port"]').setValue('6514')
+    return w
+  }
+  const submit = async (w: Awaited<ReturnType<typeof openAddDest>>) => {
+    await w.find('form.entity-form').trigger('submit')
+    await flushPromises()
+  }
+  const tlsSelect = (w: Awaited<ReturnType<typeof openAddDest>>) => w.find('[data-test="dest-tlsMode"]')
+
+  it('協定為 udp 時 TLS 選單停用，送出 tlsMode: off', async () => {
+    const w = await openAddDest('udp')
+    expect((tlsSelect(w).element as HTMLSelectElement).disabled).toBe(true)
+    await submit(w)
+    expect(api.post).toHaveBeenCalledWith('/api/destinations', expect.objectContaining({ tlsMode: 'off', tlsPeerName: null }))
+  })
+
+  it('tcp 選「驗證憑證」並填憑證名稱後一併送出', async () => {
+    const w = await openAddDest('tcp')
+    await tlsSelect(w).setValue('verify')
+    await w.find('[data-test="dest-tlsPeerName"]').setValue('  siem.example.com ')
+    await submit(w)
+    expect(api.post).toHaveBeenCalledWith('/api/destinations', expect.objectContaining({ tlsMode: 'verify', tlsPeerName: 'siem.example.com' }))
+  })
+
+  it('「驗證憑證」未填憑證名稱時送出 null（由 server 以主機欄位比對）', async () => {
+    const w = await openAddDest('tcp')
+    await tlsSelect(w).setValue('verify')
+    await submit(w)
+    expect(api.post).toHaveBeenCalledWith('/api/destinations', expect.objectContaining({ tlsMode: 'verify', tlsPeerName: null }))
+  })
+
+  it('憑證名稱欄位只在「驗證憑證」模式出現', async () => {
+    const w = await openAddDest('tcp')
+    expect(w.find('[data-test="dest-tlsPeerName"]').exists()).toBe(false)
+    await tlsSelect(w).setValue('verify')
+    expect(w.find('[data-test="dest-tlsPeerName"]').exists()).toBe(true)
+    await tlsSelect(w).setValue('anon')
+    expect(w.find('[data-test="dest-tlsPeerName"]').exists()).toBe(false)
+  })
+
+  it('選「只加密、不驗證」時顯示不安全警告，且不送出憑證名稱', async () => {
+    const w = await openAddDest('tcp')
+    await tlsSelect(w).setValue('verify')
+    await w.find('[data-test="dest-tlsPeerName"]').setValue('siem.example.com')
+    await tlsSelect(w).setValue('anon')
+    expect(w.find('[data-test="dest-tls-anon-warning"]').exists()).toBe(true)
+    await submit(w)
+    expect(api.post).toHaveBeenCalledWith('/api/destinations', expect.objectContaining({ tlsMode: 'anon', tlsPeerName: null }))
+  })
+
+  it('設好 TLS 後把協定切回 udp，TLS 模式重設為不使用', async () => {
+    const w = await openAddDest('tcp')
+    await tlsSelect(w).setValue('verify')
+    await w.find('[data-test="dest-protocol"]').setValue('udp')
+    expect((tlsSelect(w).element as HTMLSelectElement).value).toBe('off')
+    await submit(w)
+    expect(api.post).toHaveBeenCalledWith('/api/destinations', expect.objectContaining({ protocol: 'udp', tlsMode: 'off', tlsPeerName: null }))
+  })
+
+  it('編輯既有的 TLS 目的地時帶入模式與憑證名稱', async () => {
+    gets['/api/destinations'] = [{ id: 5, name: 'siem', protocol: 'tcp', host: '10.0.0.9', port: 6514, headerMode: 'raw', enabled: true, tlsMode: 'verify', tlsPeerName: 'siem.example.com' }]
+    const w = await mountPage()
+    await w.find('[data-test="dest-edit"]').trigger('click')
+    expect((tlsSelect(w).element as HTMLSelectElement).value).toBe('verify')
+    expect((w.find('[data-test="dest-tlsPeerName"]').element as HTMLInputElement).value).toBe('siem.example.com')
+    await submit(w)
+    expect(api.put).toHaveBeenCalledWith('/api/destinations/5', expect.objectContaining({ tlsMode: 'verify', tlsPeerName: 'siem.example.com' }))
+  })
+
+  it('列表的 TLS 欄顯示各目的地的模式', async () => {
+    gets['/api/destinations'] = [
+      { id: 1, name: 'plain', protocol: 'udp', host: 'h1', port: 514, headerMode: 'raw', enabled: true, tlsMode: 'off', tlsPeerName: null },
+      { id: 2, name: 'secure', protocol: 'tcp', host: 'h2', port: 6514, headerMode: 'raw', enabled: true, tlsMode: 'verify', tlsPeerName: null },
+      { id: 3, name: 'lab', protocol: 'tcp', host: 'h3', port: 6514, headerMode: 'raw', enabled: true, tlsMode: 'anon', tlsPeerName: null },
+    ]
+    const w = await mountPage()
+    expect(w.findAll('[data-test="dest-tls-verify"]')).toHaveLength(1)
+    expect(w.findAll('[data-test="dest-tls-anon"]')).toHaveLength(1)
   })
 })

@@ -53,6 +53,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_destinations_name ON destinations(name);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_routes_pair ON routes(input_id, destination_id);
 `
 
+// v1.2 新增的 TLS 欄位。CREATE TABLE IF NOT EXISTS 不會替既有的表補欄位，
+// 所以新舊 DB 一律走這條路：欄位不存在才 ALTER，重複開啟不變動。
+const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; ddl: string }> = [
+  { table: 'inputs', column: 'tls', ddl: 'tls INTEGER NOT NULL DEFAULT 0' },
+  { table: 'destinations', column: 'tls_mode', ddl: "tls_mode TEXT NOT NULL DEFAULT 'off' CHECK(tls_mode IN ('off','verify','anon'))" },
+  { table: 'destinations', column: 'tls_peer_name', ddl: 'tls_peer_name TEXT' },
+]
+
+function addMissingColumns(db: Database): void {
+  for (const { table, column, ddl } of ADDED_COLUMNS) {
+    const existing = db.pragma(`table_info(${table})`) as Array<{ name: string }>
+    if (!existing.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`)
+  }
+}
+
 export function openDb(path: string): Database {
   const db = new DatabaseCtor(path)
   db.pragma('journal_mode = WAL')
@@ -63,6 +78,7 @@ export function openDb(path: string): Database {
   db.transaction(() => {
     db.exec(MIGRATE_DEDUPE)
     db.exec(UNIQUE_INDEXES)
+    addMissingColumns(db)
   })()
   return db
 }
