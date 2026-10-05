@@ -1,10 +1,11 @@
 import type { Database } from '../db/db.js'
 import type { Input, Destination, RouteRule, FanoutConfig, InputCreate, DestinationCreate, RouteCreate } from './types.js'
 
-const toInput = (r: any): Input => ({ id: r.id, name: r.name, protocol: r.protocol, port: r.port, enabled: !!r.enabled })
+const toInput = (r: any): Input => ({ id: r.id, name: r.name, protocol: r.protocol, port: r.port, enabled: !!r.enabled, tls: !!r.tls })
 const toDest = (r: any): Destination => ({
   id: r.id, name: r.name, protocol: r.protocol, host: r.host, port: r.port,
   headerMode: r.header_mode, enabled: !!r.enabled,
+  tlsMode: r.tls_mode, tlsPeerName: r.tls_peer_name,
 })
 const toRoute = (r: any): RouteRule => ({
   id: r.id, inputId: r.input_id, destinationId: r.destination_id,
@@ -38,25 +39,25 @@ export function createRepo(db: Database): Repo {
   return {
     listInputs: listInputsFn,
     createInput(d) {
-      const r = db.prepare('INSERT INTO inputs(name,protocol,port,enabled) VALUES(?,?,?,?)')
-        .run(d.name, d.protocol, d.port, d.enabled ? 1 : 0)
+      const r = db.prepare('INSERT INTO inputs(name,protocol,port,enabled,tls) VALUES(?,?,?,?,?)')
+        .run(d.name, d.protocol, d.port, d.enabled ? 1 : 0, d.tls ? 1 : 0)
       return { id: Number(r.lastInsertRowid), ...d }
     },
     updateInput(id, d) {
-      const r = db.prepare('UPDATE inputs SET name=?,protocol=?,port=?,enabled=? WHERE id=?')
-        .run(d.name, d.protocol, d.port, d.enabled ? 1 : 0, id)
+      const r = db.prepare('UPDATE inputs SET name=?,protocol=?,port=?,enabled=?,tls=? WHERE id=?')
+        .run(d.name, d.protocol, d.port, d.enabled ? 1 : 0, d.tls ? 1 : 0, id)
       return r.changes ? { id, ...d } : null
     },
     deleteInput: (id) => db.prepare('DELETE FROM inputs WHERE id=?').run(id).changes > 0,
     listDestinations: listDestinationsFn,
     createDestination(d) {
-      const r = db.prepare('INSERT INTO destinations(name,protocol,host,port,header_mode,enabled) VALUES(?,?,?,?,?,?)')
-        .run(d.name, d.protocol, d.host, d.port, d.headerMode, d.enabled ? 1 : 0)
+      const r = db.prepare('INSERT INTO destinations(name,protocol,host,port,header_mode,enabled,tls_mode,tls_peer_name) VALUES(?,?,?,?,?,?,?,?)')
+        .run(d.name, d.protocol, d.host, d.port, d.headerMode, d.enabled ? 1 : 0, d.tlsMode, d.tlsPeerName)
       return { id: Number(r.lastInsertRowid), ...d }
     },
     updateDestination(id, d) {
-      const r = db.prepare('UPDATE destinations SET name=?,protocol=?,host=?,port=?,header_mode=?,enabled=? WHERE id=?')
-        .run(d.name, d.protocol, d.host, d.port, d.headerMode, d.enabled ? 1 : 0, id)
+      const r = db.prepare('UPDATE destinations SET name=?,protocol=?,host=?,port=?,header_mode=?,enabled=?,tls_mode=?,tls_peer_name=? WHERE id=?')
+        .run(d.name, d.protocol, d.host, d.port, d.headerMode, d.enabled ? 1 : 0, d.tlsMode, d.tlsPeerName, id)
       return r.changes ? { id, ...d } : null
     },
     deleteDestination: (id) => db.prepare('DELETE FROM destinations WHERE id=?').run(id).changes > 0,

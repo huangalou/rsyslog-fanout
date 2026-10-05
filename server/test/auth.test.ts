@@ -8,6 +8,7 @@ import { createRepo } from '../src/domain/repo.js'
 import { buildApp } from '../src/app.js'
 import { loadEnv } from '../src/env.js'
 import { applyConfig } from '../src/rsyslog/apply.js'
+import { resolveTlsFiles } from '../src/rsyslog/tls.js'
 import type { FastifyInstance } from 'fastify'
 
 const tmpDirs: string[] = []
@@ -15,19 +16,22 @@ afterAll(() => {
   for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true })
 })
 
-export function makeTestApp(opts?: { validateOutput?: string }): FastifyInstance {
+export function makeTestApp(opts?: { validateOutput?: string; tlsDir?: string }): FastifyInstance {
   const repo = createRepo(openDb(':memory:'))
   repo.setPasswordHash(bcrypt.hashSync('secret', 10))
   const dir = mkdtempSync(join(tmpdir(), 'fanout-test-'))
   tmpDirs.push(dir)
   const paths = { staging: join(dir, 's.conf'), live: join(dir, 'l.conf'), backup: join(dir, 'b.conf') }
+  // 預設指向一個不存在的目錄：測試不受執行環境是否剛好有 /tmp/fanout-test/tls 影響
+  const env = loadEnv({ FANOUT_ADMIN_PASSWORD: 'secret', FANOUT_DATA_DIR: '/tmp/fanout-test', FANOUT_TLS_DIR: opts?.tlsDir ?? join(dir, 'no-tls') })
   return buildApp({
-    repo, env: loadEnv({ FANOUT_ADMIN_PASSWORD: 'secret', FANOUT_DATA_DIR: '/tmp/fanout-test' }),
+    repo, env,
     apply: () =>
       applyConfig({
         repo,
         paths,
         genOpts: { tailPort: 15514, dataDir: '/tmp/fanout-test' },
+        resolveTls: () => resolveTlsFiles(env.tlsDir),
         validate: async () =>
           opts?.validateOutput !== undefined ? { ok: false, output: opts.validateOutput } : { ok: true, output: '' },
         restart: async () => ({ ok: true, output: '' }),

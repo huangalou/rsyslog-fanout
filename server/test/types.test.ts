@@ -62,3 +62,70 @@ describe('host IPv6 zone-id 拒絕', () => {
     expect(r.success).toBe(false)
   })
 })
+
+describe('TLS 欄位', () => {
+  const input = { name: 'n1', protocol: 'tcp', port: 5140, enabled: true }
+  const dest = { name: 'd', protocol: 'tcp', host: 'siem.example.com', port: 6514, enabled: true }
+  const firstMessage = (r: { success: boolean; error?: { issues: Array<{ message: string }> } }) => r.error?.issues[0].message
+
+  it('input 未帶 tls 時預設 false（舊的 API 呼叫方不需修改）', () => {
+    expect(InputCreateSchema.parse(input).tls).toBe(false)
+  })
+  it('tcp input 可啟用 tls', () => {
+    expect(InputCreateSchema.parse({ ...input, tls: true }).tls).toBe(true)
+  })
+  it('udp input 啟用 tls 時以 TLS_REQUIRES_TCP 拒絕', () => {
+    const r = InputCreateSchema.safeParse({ ...input, protocol: 'udp', tls: true })
+    expect(r.success).toBe(false)
+    expect(firstMessage(r)).toBe('TLS_REQUIRES_TCP')
+  })
+  it('destination 未帶 TLS 欄位時預設 tlsMode=off、tlsPeerName=null', () => {
+    const r = DestinationCreateSchema.parse(dest)
+    expect(r.tlsMode).toBe('off')
+    expect(r.tlsPeerName).toBeNull()
+  })
+  it.each(['verify', 'anon'])('tcp destination 可設 tlsMode=%s', (mode) => {
+    expect(DestinationCreateSchema.parse({ ...dest, tlsMode: mode }).tlsMode).toBe(mode)
+  })
+  it.each(['verify', 'anon'])('udp destination 設 tlsMode=%s 時以 TLS_REQUIRES_TCP 拒絕', (mode) => {
+    const r = DestinationCreateSchema.safeParse({ ...dest, protocol: 'udp', tlsMode: mode })
+    expect(r.success).toBe(false)
+    expect(firstMessage(r)).toBe('TLS_REQUIRES_TCP')
+  })
+  it('未知的 tlsMode 拒絕', () => {
+    expect(DestinationCreateSchema.safeParse({ ...dest, tlsMode: 'strict' }).success).toBe(false)
+  })
+  it.each(['siem.example.com', '*.example.com', 'siem-01'])('合法 tlsPeerName 通過：%s', (name) => {
+    const r = DestinationCreateSchema.safeParse({ ...dest, tlsMode: 'verify', tlsPeerName: name })
+    expect(r.success).toBe(true)
+  })
+  it.each(['a" x="1', 'a\nb', 'a b', '', 'a,b', '.example.com', 'example.com.', 'a..b'])('非法 tlsPeerName 以 TLS_PEER_NAME_FORMAT 拒絕（防止跳出 conf 屬性）：%j', (name) => {
+    const r = DestinationCreateSchema.safeParse({ ...dest, tlsMode: 'verify', tlsPeerName: name })
+    expect(r.success).toBe(false)
+    expect(firstMessage(r)).toBe('TLS_PEER_NAME_FORMAT')
+  })
+})
+
+describe('tlsPeerName 的萬用字元', () => {
+  const dest = { name: 'd', protocol: 'tcp', host: '10.0.0.5', port: 6514, enabled: true, tlsMode: 'verify' }
+  it.each(['*.example.com', '*.siem.example.com'])('開頭 *. 且其後至少兩段時允許：%s', (name) => {
+    expect(DestinationCreateSchema.safeParse({ ...dest, tlsPeerName: name }).success).toBe(true)
+  })
+  // 這些寫法會讓 verify 的名稱驗證形同虛設：畫面顯示「驗證憑證」，實際上任何受信任 CA 簽的憑證都會過
+  it.each(['*', '*.com', '*.*', 'siem.*', 'a*.example.com', '*a.example.com', 'siem.*.com', '**.example.com'])(
+    '過寬或位置不對的萬用字元以 TLS_PEER_NAME_FORMAT 拒絕：%s', (name) => {
+      const r = DestinationCreateSchema.safeParse({ ...dest, tlsPeerName: name })
+      expect(r.success).toBe(false)
+      expect(r.error?.issues[0].message).toBe('TLS_PEER_NAME_FORMAT')
+    })
+})
+
+describe('tlsPeerName 只在 verify 模式保留', () => {
+  const dest = { name: 'd', protocol: 'tcp', host: '10.0.0.5', port: 6514, enabled: true, tlsPeerName: 'siem.example.com' }
+  it('verify 模式保留 tlsPeerName', () => {
+    expect(DestinationCreateSchema.parse({ ...dest, tlsMode: 'verify' }).tlsPeerName).toBe('siem.example.com')
+  })
+  it.each(['off', 'anon'])('tlsMode=%s 時 tlsPeerName 正規化為 null（不留下不生效的設定）', (mode) => {
+    expect(DestinationCreateSchema.parse({ ...dest, tlsMode: mode }).tlsPeerName).toBeNull()
+  })
+})

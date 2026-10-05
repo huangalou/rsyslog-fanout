@@ -114,3 +114,33 @@ describe('openDb migration：同埠不同名的重複 input', () => {
     db.close()
   })
 })
+
+describe('openDb migration：TLS 欄位', () => {
+  it('舊 schema 升級後既有資料取預設值（input tls=0、destination tls_mode=off、tls_peer_name=NULL）', () => {
+    const db = openDb(makeLegacyDb())
+    const inputs = db.prepare('SELECT tls FROM inputs').all() as Array<{ tls: number }>
+    expect(inputs.length).toBeGreaterThan(0)
+    expect(inputs.every((i) => i.tls === 0)).toBe(true)
+    const dests = db.prepare('SELECT tls_mode, tls_peer_name FROM destinations').all() as Array<{ tls_mode: string; tls_peer_name: string | null }>
+    expect(dests.length).toBeGreaterThan(0)
+    expect(dests.every((d) => d.tls_mode === 'off' && d.tls_peer_name === null)).toBe(true)
+    db.close()
+  })
+  it('重複開啟不會重複加欄位而失敗', () => {
+    const path = makeLegacyDb()
+    openDb(path).close()
+    expect(() => openDb(path).close()).not.toThrow()
+  })
+  it('全新 DB 同樣具備 TLS 欄位', () => {
+    const db = openDb(':memory:')
+    db.prepare("INSERT INTO inputs (name, protocol, port, tls) VALUES ('t', 'tcp', 6514, 1)").run()
+    db.prepare("INSERT INTO destinations (name, protocol, host, port, tls_mode, tls_peer_name) VALUES ('d', 'tcp', 'h', 6514, 'verify', 'siem')").run()
+    expect((db.prepare('SELECT tls FROM inputs').get() as { tls: number }).tls).toBe(1)
+    db.close()
+  })
+  it('tls_mode 於 DB 層只接受 off / verify / anon', () => {
+    const db = openDb(':memory:')
+    expect(() => db.prepare("INSERT INTO destinations (name, protocol, host, port, tls_mode) VALUES ('d', 'tcp', 'h', 1, 'bogus')").run()).toThrow()
+    db.close()
+  })
+})
