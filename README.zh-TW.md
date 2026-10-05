@@ -53,22 +53,6 @@ Docker 無法在執行期新增 port mapping，因此可用的監聽埠範圍必
 2. 同步更新 `FANOUT_PORT_RANGE`，例如 `"514,5140-5199,9000-9010"`。
 3. 執行 `docker compose up -d --build` 重建容器以套用新的 port mapping。
 
-## 整合範例：CyberRange
-
-FanOut 與 [CyberRange](https://github.com/huangalou/CyberRange)（catalog 驅動的日誌產生器，用於 SIEM 偵測規則驗證）天然成對：把 CyberRange 的 UDP sink 指向 FanOut 的 input，FanOut 便能將日誌流透明分流到一個或多個 SIEM。
-
-```bash
-# 1. 在 WebUI 建立 Input（例如 udp/5160）、每個 SIEM 一個 Destination
-#   （headerMode: raw）、一條 Route 串起來，然後 Apply。
-
-# 2. 對 input 發射具真實廠牌樣態的日誌：
-cyberrange gen \
-  --vendor fortinet --product fortios --version 7.4 --log-type traffic.forward \
-  --count 1000 --rate 50 --sink udp://<fanout-host>:5160
-```
-
-已完成端到端實測（2026-08-15）：CyberRange 產生的 FortiOS key-value、CEF、RFC 3164 三種格式，經 FanOut 轉發後在下游接收端與送出內容 byte-identical（`headerMode: raw`），Live Tail 亦正確解析 facility/severity。
-
 ## TLS
 
 收、送兩端都支援 syslog over TLS（RFC 5425），僅限 `tcp`。TLS 與明文 input 可並存。
@@ -99,6 +83,22 @@ docker cp ca.pem   rsyslog-fanout:/data/tls/ca.pem    # 只有私有 CA 才需�
 - `ca.pem` 會**取代**系統信任庫。要同時信任公有 CA 與私有 CA，請把兩者串接成一個檔。
 - `cert.pem` / `key.pem` 存在時，TLS destination 若要求用戶端憑證，rsyslog 會出示同一張。
 - 標準的 syslog-TLS 埠 `6514` 不在預設的 `FANOUT_PORT_RANGE` 內；需要的話請加進該變數與 `docker-compose.yml` 的發布埠（見[埠範圍限制](#埠範圍限制)）。
+
+## 整合範例：CyberRange
+
+FanOut 與 [CyberRange](https://github.com/huangalou/CyberRange)（catalog 驅動的日誌產生器，用於 SIEM 偵測規則驗證）天然成對：把 CyberRange 的 UDP sink 指向 FanOut 的 input，FanOut 便能將日誌流透明分流到一個或多個 SIEM。
+
+```bash
+# 1. 在 WebUI 建立 Input（例如 udp/5160）、每個 SIEM 一個 Destination
+#   （headerMode: raw）、一條 Route 串起來，然後 Apply。
+
+# 2. 對 input 發射具真實廠牌樣態的日誌：
+cyberrange gen \
+  --vendor fortinet --product fortios --version 7.4 --log-type traffic.forward \
+  --count 1000 --rate 50 --sink udp://<fanout-host>:5160
+```
+
+已完成端到端實測（2026-08-15）：CyberRange 產生的 FortiOS key-value、CEF、RFC 3164 三種格式，經 FanOut 轉發後在下游接收端與送出內容 byte-identical（`headerMode: raw`），Live Tail 亦正確解析 facility/severity。
 
 ## 已知限制
 
