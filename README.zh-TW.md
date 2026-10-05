@@ -69,6 +69,8 @@ cyberrange gen \
 
 已完成端到端實測（2026-08-15）：CyberRange 產生的 FortiOS key-value、CEF、RFC 3164 三種格式，經 FanOut 轉發後在下游接收端與送出內容 byte-identical（`headerMode: raw`），Live Tail 亦正確解析 facility/severity。
 
+時間軸演練驗收（2026-10-05）：以 CyberRange 的 `--burst` 節奏跑 5.5 分鐘持續演練（FortiOS 背景流量 + 兩波 SSH 暴力破解），經 FanOut 依 facility 分流至 2 個目的地，676 筆零遺失、內容 byte-identical，事件間隔經轉發後偏差 ≤ 3.06 ms。完整紀錄與可重跑腳本見 [`docs/drills/2026-10-05-cyberrange-timed-drill/`](docs/drills/2026-10-05-cyberrange-timed-drill/README.md)。
+
 ## 已知限制
 
 - **套用設定時有小於 1 秒的中斷。** rsyslog 不支援熱載入新的監聽埠，因此套用設定必須重啟 rsyslogd（通常 <1 秒）。TCP 來源會自動重連；該瞬間傳輸中的 UDP 封包會遺失——這是 rsyslog 本身的特性，並非本工具的 bug。
