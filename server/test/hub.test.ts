@@ -47,12 +47,31 @@ describe('createHub', () => {
     hub.setAction('d1_i1', { processed: 10, failed: 0, suspended: false, queueSize: 0 })
     const s = hub.snapshot()
 
+    // 以下三行刻意違反 readonly 型別，驗證執行期也擋得住（型別若被放寬，@ts-expect-error 會報錯提醒）
+    // @ts-expect-error 對 readonly 屬性賦值
     expect(() => { s.inputs['udp:514'].submitted = 999 }).toThrow(TypeError)
+    // @ts-expect-error 對 readonly 屬性賦值
     expect(() => { s.actions['d1_i1'].failed = 999 }).toThrow(TypeError)
+    // @ts-expect-error 對 readonly 索引簽章賦值
     expect(() => { s.inputs['udp:999'] = { submitted: 1, rate: 1 } }).toThrow(TypeError)
 
     expect(hub.snapshot().inputs).toEqual({ 'udp:514': { submitted: 10, rate: 1 } })
     expect(hub.snapshot().actions['d1_i1'].failed).toBe(0)
+  })
+
+  it('snapshot 的 sources 與頂層物件同樣不可被外部改動', () => {
+    const hub = createHub({ staleAfterMs: 600000 })
+    hub.seenSource('10.0.0.1', Date.now())
+    const s = hub.snapshot()
+
+    // @ts-expect-error 對 readonly 陣列 push
+    expect(() => { s.sources.push({ ip: '10.0.0.9', lastSeen: 0, stale: false }) }).toThrow(TypeError)
+    // @ts-expect-error 對 readonly 屬性賦值
+    expect(() => { s.sources[0].ip = '10.9.9.9' }).toThrow(TypeError)
+    // @ts-expect-error 對 readonly 屬性賦值
+    expect(() => { s.inputs = {} }).toThrow(TypeError)
+
+    expect(hub.snapshot().sources.map((x) => x.ip)).toEqual(['10.0.0.1'])
   })
 
   it('setAction 之後呼叫端再改動傳入的物件，不影響 hub 狀態', () => {
