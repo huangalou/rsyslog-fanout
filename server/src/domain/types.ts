@@ -50,8 +50,9 @@ const HOSTNAME_RE = /^[A-Za-z0-9.\-]+$/
 const host = z.string().min(1).max(255)
   .refine((v) => HOSTNAME_RE.test(v) || (isIPv6(v) && !v.includes('%')), { message: 'HOST_FORMAT' })
 // 會原樣寫進 rsyslog conf 的 StreamDriverPermittedPeers 屬性，與 host 同為注入防護邊界，不可放寬。
-// 比 hostname 多允許 *，供 rsyslog 的萬用字元比對（如 *.example.com）。
-const PEER_NAME_RE = /^[A-Za-z0-9.*\-]+$/
+// 萬用字元只允許開頭的 "*."，且其後至少兩段（*.example.com）："*"、"*.com" 這類寫法會讓
+// verify 形同只驗憑證鏈——畫面顯示「驗證憑證」，實際上任何受信任 CA 簽的憑證都會通過。
+const PEER_NAME_RE = /^(?:\*\.[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+|[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)$/
 const tlsPeerName = z.string().max(255)
   .refine((v) => PEER_NAME_RE.test(v), { message: 'TLS_PEER_NAME_FORMAT' })
 export const DestinationCreateSchema = z.object({
@@ -60,6 +61,8 @@ export const DestinationCreateSchema = z.object({
   tlsMode: z.enum(['off', 'verify', 'anon']).default('off'),
   tlsPeerName: tlsPeerName.nullable().default(null),
 }).refine((v) => v.tlsMode === 'off' || v.protocol === 'tcp', TLS_REQUIRES_TCP)
+  // 憑證名稱只在 verify 模式生效；其他模式不保留，避免留下看似有設定、實際不作用的值
+  .transform((v) => (v.tlsMode === 'verify' ? v : { ...v, tlsPeerName: null }))
 export const RouteCreateSchema = z.object({
   inputId: z.number().int().positive(),
   destinationId: z.number().int().positive(),

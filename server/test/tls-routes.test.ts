@@ -97,3 +97,49 @@ describe('套用：TLS 憑證檢查', () => {
     expect((await get('/api/config/status')).json().data.dirty).toBe(false)
   })
 })
+
+describe('PUT 省略 TLS 欄位時沿用現值（不帶新欄位的舊式呼叫方不會悄悄關掉 TLS）', () => {
+  const put = (url: string, payload: unknown) => app.inject({ method: 'PUT', url, payload, cookies: cookie })
+  const tlsDest = { name: 'siem', protocol: 'tcp', host: '10.0.0.5', port: 6514, headerMode: 'raw', enabled: true, tlsMode: 'verify', tlsPeerName: 'siem.example.com' }
+
+  it('input：未帶 tls 的 PUT 保留既有的 tls=true', async () => {
+    const id = (await post('/api/inputs', tlsInput)).json().data.id
+    const r = await put(`/api/inputs/${id}`, { name: 'renamed', protocol: 'tcp', port: 5140, enabled: true })
+    expect(r.statusCode).toBe(200)
+    expect(r.json().data).toMatchObject({ name: 'renamed', tls: true })
+    expect((await get('/api/inputs')).json().data[0].tls).toBe(true)
+  })
+  it('input：明確帶 tls=false 的 PUT 才會關閉 TLS', async () => {
+    const id = (await post('/api/inputs', tlsInput)).json().data.id
+    const r = await put(`/api/inputs/${id}`, { ...tlsInput, tls: false })
+    expect(r.json().data.tls).toBe(false)
+  })
+  it('input：未帶 tls 卻把協定改成 udp → 400 TLS_REQUIRES_TCP，而不是默默降為明文', async () => {
+    const id = (await post('/api/inputs', tlsInput)).json().data.id
+    const r = await put(`/api/inputs/${id}`, { name: 'tls-in', protocol: 'udp', port: 5140, enabled: true })
+    expect(r.statusCode).toBe(400)
+    expect(r.json().error.code).toBe('TLS_REQUIRES_TCP')
+    expect((await get('/api/inputs')).json().data[0]).toMatchObject({ protocol: 'tcp', tls: true })
+  })
+  it('destination：未帶 TLS 欄位的 PUT 保留既有的 tlsMode 與 tlsPeerName', async () => {
+    const id = (await post('/api/destinations', tlsDest)).json().data.id
+    const r = await put(`/api/destinations/${id}`, { name: 'siem-2', protocol: 'tcp', host: '10.0.0.5', port: 6514, headerMode: 'raw', enabled: true })
+    expect(r.statusCode).toBe(200)
+    expect(r.json().data).toMatchObject({ name: 'siem-2', tlsMode: 'verify', tlsPeerName: 'siem.example.com' })
+  })
+  it('destination：明確帶 tlsMode=off 的 PUT 才會關閉 TLS', async () => {
+    const id = (await post('/api/destinations', tlsDest)).json().data.id
+    const r = await put(`/api/destinations/${id}`, { ...tlsDest, tlsMode: 'off', tlsPeerName: null })
+    expect(r.json().data).toMatchObject({ tlsMode: 'off', tlsPeerName: null })
+  })
+  it('PUT 不存在的 id 仍回 404', async () => {
+    const r = await put('/api/inputs/9999', { name: 'x', protocol: 'tcp', port: 5140, enabled: true })
+    expect(r.statusCode).toBe(404)
+  })
+  it('PUT 的 body 不是物件時回 400 VALIDATION（不因合併現值而出錯）', async () => {
+    const id = (await post('/api/inputs', tlsInput)).json().data.id
+    const r = await put(`/api/inputs/${id}`, [1, 2])
+    expect(r.statusCode).toBe(400)
+    expect(r.json().error.code).toBe('VALIDATION')
+  })
+})

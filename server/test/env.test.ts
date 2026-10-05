@@ -27,3 +27,16 @@ describe('loadEnv', () => {
     expect(loadEnv({ FANOUT_ADMIN_PASSWORD: 'pw', FANOUT_TLS_DIR: '/run/secrets/tls' }).tlsDir).toBe('/run/secrets/tls')
   })
 })
+
+describe('loadEnv：會寫進 rsyslog 設定的路徑', () => {
+  // 這兩個目錄會原樣出現在 rsyslog 設定的雙引號字串裡
+  it.each(['/data"x', '/data\nmodule(load="omprog")', '/da\\ta', '/data\u0000'])('FANOUT_TLS_DIR 含引號、反斜線或控制字元時啟動失敗：%j', (dir) => {
+    expect(() => loadEnv({ FANOUT_ADMIN_PASSWORD: 'pw', FANOUT_TLS_DIR: dir })).toThrow(/FANOUT_TLS_DIR/)
+  })
+  it('FANOUT_DATA_DIR 含引號時啟動失敗', () => {
+    expect(() => loadEnv({ FANOUT_ADMIN_PASSWORD: 'pw', FANOUT_DATA_DIR: '/data"x' })).toThrow(/FANOUT_DATA_DIR/)
+  })
+  it('一般路徑（含空白與連字號）可用', () => {
+    expect(loadEnv({ FANOUT_ADMIN_PASSWORD: 'pw', FANOUT_TLS_DIR: '/run/secrets/fan-out tls' }).tlsDir).toBe('/run/secrets/fan-out tls')
+  })
+})

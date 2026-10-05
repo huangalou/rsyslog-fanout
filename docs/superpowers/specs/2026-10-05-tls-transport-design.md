@@ -63,9 +63,12 @@ TLS 檔案放在 `FANOUT_TLS_DIR`（預設 `${FANOUT_DATA_DIR}/tls`，即 `/data
 - `verify`：驗證憑證鏈與名稱（`x509/name`）。
 - `anon`：只加密、不驗證對方身分，給自簽憑證的實驗環境用。UI 明確標示不安全。
 - 用列舉而非兩個布林，避免「未啟用 TLS 卻要求驗證」這種無意義組合。
-- `tlsPeerName` 存在的原因：SIEM 常以 IP 連線，而憑證簽給 DNS 名稱；gtls 不比對 IP SAN，沒有這個欄位時這種部署無法使用 `verify`。允許字元為主機名字元加 `*`（rsyslog 支援萬用字元）。
+- `tlsPeerName` 存在的原因：SIEM 常以 IP 連線，而憑證簽給 DNS 名稱；gtls 不比對 IP SAN，沒有這個欄位時這種部署無法使用 `verify`。萬用字元只允許開頭的 `*.` 且其後至少兩段（`*.example.com`）；`*`、`*.com` 這類寫法會讓 `verify` 形同只驗憑證鏈，一律拒絕。`*.fanout.test` 對 `node1.fanout.test` 相符送達、`*.other.test` 不送達，已在容器內實測。
+- `tlsPeerName` 只在 `verify` 模式保留，其他模式存入時正規化為 `null`。
 
 DB 以 `ALTER TABLE ... ADD COLUMN`（先查 `table_info`，冪等）加欄位，既有資料取預設值。API schema 的新欄位皆有預設值，舊的 API 呼叫方不需修改。
+
+`PUT` 省略 TLS 欄位時沿用該筆資料的現值，而不是套用預設值：不認得新欄位的呼叫方更新一筆 TLS 設定時，不會把 TLS 悄悄關掉。要關閉必須明確送出 `tls: false` / `tlsMode: "off"`。
 
 `configHash` 在新欄位為預設值時不把它們納入雜湊，升級前已套用的設定不會因為多了欄位被判定為「未套用變更」。
 
@@ -84,6 +87,8 @@ action(name="d1_i1" type="omfwd" target="siem.example.com" port="6514" protocol=
 - `cert` / `key` 兩個全域參數只在兩個檔都存在時輸出。
 - input 的 `authMode="anon"` 指的是不要求用戶端憑證；伺服器仍會出示自己的憑證供設備驗證。
 - 產生器維持純函式：TLS 檔案路徑由呼叫端解析後經 `GenOpts.tls` 傳入，產生器不碰檔案系統。
+- 若設定資料出現 udp 搭配 TLS 的組合（schema 已擋，只可能來自 DB 被直接改動或程式錯誤），產生器直接丟錯讓套用失敗，不會默默產出明文設定。
+- `FANOUT_DATA_DIR` / `FANOUT_TLS_DIR` 會寫進設定檔的雙引號字串，啟動時檢查不得含引號、反斜線或控制字元。
 
 ### 套用前檢查
 

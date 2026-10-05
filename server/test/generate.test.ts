@@ -119,10 +119,18 @@ describe('generateConf：TLS', () => {
     expect(generateConf(disabled, opts)).not.toContain('NetstreamDriver')
     expect(generateConf(unrouted, opts)).not.toContain('NetstreamDriver')
   })
-  it('udp 搭配 TLS 欄位（schema 已擋，此為最後防線）不輸出 TLS 參數', () => {
+  // schema 已在 API 邊界擋掉 udp + TLS；若資料仍出現這種組合（DB 被直接改動或日後的程式錯誤），
+  // 產生器必須拒絕，而不是默默產出一份明文設定
+  it('udp input 標了 tls 時拒絕產生設定', () => {
     const udpTlsInput = { ...cfg.inputs[0], tls: true }
-    const out = generateConf({ ...withTlsDest({ protocol: 'udp' }), inputs: [udpTlsInput] }, opts)
-    expect(out).not.toContain('treamDriver')
+    expect(() => generateConf({ ...cfg, inputs: [udpTlsInput] }, opts)).toThrow(/input "net".*TLS.*tcp/)
+  })
+  it('udp destination 標了 tlsMode 時拒絕產生設定', () => {
+    expect(() => generateConf(withTlsDest({ protocol: 'udp' }), opts)).toThrow(/destination "backup".*TLS.*tcp/)
+  })
+  it('停用中的 udp + TLS 資料同樣拒絕（啟用後就會變成明文）', () => {
+    const udpTlsInput = { ...cfg.inputs[0], id: 9, name: 'off-in', port: 5150, enabled: false, tls: true }
+    expect(() => generateConf({ ...cfg, inputs: [cfg.inputs[0], udpTlsInput] }, opts)).toThrow(/input "off-in"/)
   })
 })
 

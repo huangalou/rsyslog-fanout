@@ -24,7 +24,7 @@ async function main() {
   const env = loadEnv(process.env)
   for (const d of ['rsyslog', 'queues', 'stats']) mkdirSync(join(env.dataDir, d), { recursive: true })
   // TLS 目錄先建好，操作者才能直接 docker cp 憑證進來；指向唯讀掛載時建不出來屬正常，不視為錯誤
-  try { mkdirSync(env.tlsDir, { recursive: true }) }
+  try { mkdirSync(env.tlsDir, { recursive: true, mode: 0o700 }) }
   catch (e) { console.error(`[tls] 無法建立 ${env.tlsDir}（若為唯讀掛載可忽略）: ${(e as Error).message}`) }
   const repo = createRepo(openDb(join(env.dataDir, 'fanout.db')))
   if (!repo.getPasswordHash()) repo.setPasswordHash(bcrypt.hashSync(env.adminPassword, 10))

@@ -189,6 +189,19 @@ describe('Inputs page：TLS', () => {
     expect(w.find('[data-test="tls-cert-warning"]').text()).toContain('過期')
   })
 
+  it('每次開啟表單都重新查詢憑證狀態（事後才掛上憑證不必重新整理頁面）', async () => {
+    gets['/api/tls/status'] = certMissing
+    const w = mount(Inputs, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+    gets['/api/tls/status'] = certReady
+    await w.find('[data-test="add"]').trigger('click')
+    await flushPromises()
+    await w.find('[data-test="protocol"]').setValue('tcp')
+    await tlsBox(w).setValue(true)
+    expect(w.find('[data-test="tls-cert-info"]').exists()).toBe(true)
+    expect(w.find('[data-test="tls-cert-warning"]').exists()).toBe(false)
+  })
+
   it('未勾選 TLS 時不顯示任何憑證提示', async () => {
     gets['/api/tls/status'] = certMissing
     const w = await openAddForm()

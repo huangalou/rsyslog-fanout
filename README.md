@@ -90,7 +90,7 @@ Then in the WebUI:
 
 - **Input** — choose `tcp` and tick **Enable TLS**. The form shows whether the server certificate is in place; Apply is rejected (`TLS_CERT_MISSING`) while it is not. Clients are not asked for a certificate.
 - **Destination** — choose `tcp` and a TLS mode:
-  - **Verify certificate** (recommended): the destination's certificate must chain to a trusted CA *and* match a name. The name defaults to the Host field; set **Certificate name** when you connect by IP but the certificate was issued to a DNS name (IP addresses in certificates are not matched).
+  - **Verify certificate** (recommended): the destination's certificate must chain to a trusted CA *and* match a name. The name defaults to the Host field; set **Certificate name** when you connect by IP but the certificate was issued to a DNS name (IP addresses in certificates are not matched). A leading wildcard such as `*.example.com` is accepted; broader patterns like `*` or `*.com` are rejected.
   - **Encrypt only, no verification**: for labs with self-signed certificates. The peer is not authenticated.
 
 Good to know:

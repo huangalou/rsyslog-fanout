@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, copyFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync, copyFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { resolveTlsFiles, readTlsStatus, SYSTEM_CA_FILE } from '../src/rsyslog/tls.js'
@@ -35,6 +35,25 @@ describe('resolveTlsFiles：憑證內容', () => {
   it('cert.pem 不是合法憑證時視為沒有伺服器憑證（rsyslogd -N1 擋不住這種設定）', () => {
     writeFileSync(join(dir, 'cert.pem'), 'not a certificate'); putKey()
     expect(resolveTlsFiles(dir)).toMatchObject({ certFile: null, keyFile: null })
+  })
+})
+
+describe('resolveTlsFiles：只接受一般檔案', () => {
+  it('key.pem 是目錄時視為沒有伺服器憑證', () => {
+    putCert(); mkdirSync(join(dir, 'key.pem'))
+    expect(resolveTlsFiles(dir)).toMatchObject({ certFile: null, keyFile: null })
+    expect(readTlsStatus(dir).serverCert).toMatchObject({ ready: false, keyPresent: false })
+  })
+  it('ca.pem 是目錄時不當成自訂 CA', () => {
+    mkdirSync(join(dir, 'ca.pem'))
+    expect(resolveTlsFiles(dir).caFile).toBe(SYSTEM_CA_FILE)
+    expect(readTlsStatus(dir).customCa).toBe(false)
+  })
+  it('cert.pem 超過大小上限時不讀取、視為不可用（即使開頭是合法憑證）', () => {
+    const real = readFileSync(FIXTURE_CERT)
+    writeFileSync(join(dir, 'cert.pem'), Buffer.concat([real, Buffer.alloc(1024 * 1024 + 1, 0x0a)])); putKey()
+    expect(resolveTlsFiles(dir)).toMatchObject({ certFile: null, keyFile: null })
+    expect(readTlsStatus(dir).serverCert).toMatchObject({ ready: false, certPresent: true, subject: null })
   })
 })
 

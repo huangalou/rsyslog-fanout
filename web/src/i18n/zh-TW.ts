@@ -130,7 +130,7 @@ export default {
     NAME_IN_USE: '名稱已被使用',
     ROUTE_EXISTS: '此接收與目的地之間已存在路由',
     TLS_REQUIRES_TCP: 'TLS 只能搭配 tcp 協定',
-    TLS_PEER_NAME_FORMAT: '憑證名稱僅允許字母、數字、點、連字號與萬用字元 *',
+    TLS_PEER_NAME_FORMAT: '憑證名稱須為主機名稱，萬用字元僅限開頭的「*.」且其後至少兩段（如 *.example.com）',
     TLS_CERT_MISSING: '有啟用 TLS 的接收設定，但找不到可用的伺服器憑證。請把 cert.pem 與 key.pem 放進 {dir} 後再套用。',
     INTERNAL: '伺服器內部錯誤',
     SOURCE_FILTER_FORMAT: '僅接受完整 IP 或 /8、/16、/24 CIDR',

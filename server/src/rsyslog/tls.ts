@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { X509Certificate } from 'node:crypto'
 import { join } from 'node:path'
 
@@ -21,9 +21,25 @@ const pathsIn = (tlsDir: string) => ({
   ca: join(tlsDir, 'ca.pem'), cert: join(tlsDir, 'cert.pem'), key: join(tlsDir, 'key.pem'),
 })
 
-// 檔案不存在、讀不到、或內容不是憑證，對呼叫端都是同一件事：這張憑證不能用。
+// 憑證檔遠小於此；上限是為了不把被誤放進來的大檔整個讀進記憶體（狀態 API 與每次套用都會讀）
+const MAX_CERT_BYTES = 1024 * 1024
+
+/** 一般檔案的大小；不存在、不是一般檔案（如目錄）或無法存取時回 null */
+function regularFileSize(path: string): number | null {
+  try {
+    const st = statSync(path)
+    return st.isFile() ? st.size : null
+  } catch {
+    return null
+  }
+}
+const isRegularFile = (path: string): boolean => regularFileSize(path) !== null
+
+// 檔案不存在、過大、讀不到、或內容不是憑證，對呼叫端都是同一件事：這張憑證不能用。
 // 以 null 回報而不往上丟，由 readTlsStatus 的 ready 與套用前檢查呈現給使用者。
 function parseCert(path: string): X509Certificate | null {
+  const size = regularFileSize(path)
+  if (size === null || size > MAX_CERT_BYTES) return null
   try {
     return new X509Certificate(readFileSync(path))
   } catch {
@@ -33,9 +49,9 @@ function parseCert(path: string): X509Certificate | null {
 
 export function resolveTlsFiles(tlsDir: string): TlsFiles {
   const p = pathsIn(tlsDir)
-  const hasServerCert = parseCert(p.cert) !== null && existsSync(p.key)
+  const hasServerCert = parseCert(p.cert) !== null && isRegularFile(p.key)
   return {
-    caFile: existsSync(p.ca) ? p.ca : SYSTEM_CA_FILE,
+    caFile: isRegularFile(p.ca) ? p.ca : SYSTEM_CA_FILE,
     certFile: hasServerCert ? p.cert : null,
     keyFile: hasServerCert ? p.key : null,
   }
@@ -44,14 +60,14 @@ export function resolveTlsFiles(tlsDir: string): TlsFiles {
 export function readTlsStatus(tlsDir: string, now: Date = new Date()): TlsStatus {
   const p = pathsIn(tlsDir)
   const cert = parseCert(p.cert)
-  const keyPresent = existsSync(p.key)
+  const keyPresent = isRegularFile(p.key)
   const notAfter = cert ? new Date(cert.validTo) : null
   return {
     dir: tlsDir,
-    customCa: existsSync(p.ca),
+    customCa: isRegularFile(p.ca),
     serverCert: {
       ready: cert !== null && keyPresent,
-      certPresent: existsSync(p.cert),
+      certPresent: isRegularFile(p.cert),
       keyPresent,
       subject: cert?.subject ?? null,
       altNames: cert?.subjectAltName ?? null,

@@ -99,9 +99,33 @@ describe('TLS 欄位', () => {
     const r = DestinationCreateSchema.safeParse({ ...dest, tlsMode: 'verify', tlsPeerName: name })
     expect(r.success).toBe(true)
   })
-  it.each(['a" x="1', 'a\nb', 'a b', '', 'a,b'])('非法 tlsPeerName 以 TLS_PEER_NAME_FORMAT 拒絕（防止跳出 conf 屬性）：%j', (name) => {
+  it.each(['a" x="1', 'a\nb', 'a b', '', 'a,b', '.example.com', 'example.com.', 'a..b'])('非法 tlsPeerName 以 TLS_PEER_NAME_FORMAT 拒絕（防止跳出 conf 屬性）：%j', (name) => {
     const r = DestinationCreateSchema.safeParse({ ...dest, tlsMode: 'verify', tlsPeerName: name })
     expect(r.success).toBe(false)
     expect(firstMessage(r)).toBe('TLS_PEER_NAME_FORMAT')
+  })
+})
+
+describe('tlsPeerName 的萬用字元', () => {
+  const dest = { name: 'd', protocol: 'tcp', host: '10.0.0.5', port: 6514, enabled: true, tlsMode: 'verify' }
+  it.each(['*.example.com', '*.siem.example.com'])('開頭 *. 且其後至少兩段時允許：%s', (name) => {
+    expect(DestinationCreateSchema.safeParse({ ...dest, tlsPeerName: name }).success).toBe(true)
+  })
+  // 這些寫法會讓 verify 的名稱驗證形同虛設：畫面顯示「驗證憑證」，實際上任何受信任 CA 簽的憑證都會過
+  it.each(['*', '*.com', '*.*', 'siem.*', 'a*.example.com', '*a.example.com', 'siem.*.com', '**.example.com'])(
+    '過寬或位置不對的萬用字元以 TLS_PEER_NAME_FORMAT 拒絕：%s', (name) => {
+      const r = DestinationCreateSchema.safeParse({ ...dest, tlsPeerName: name })
+      expect(r.success).toBe(false)
+      expect(r.error?.issues[0].message).toBe('TLS_PEER_NAME_FORMAT')
+    })
+})
+
+describe('tlsPeerName 只在 verify 模式保留', () => {
+  const dest = { name: 'd', protocol: 'tcp', host: '10.0.0.5', port: 6514, enabled: true, tlsPeerName: 'siem.example.com' }
+  it('verify 模式保留 tlsPeerName', () => {
+    expect(DestinationCreateSchema.parse({ ...dest, tlsMode: 'verify' }).tlsPeerName).toBe('siem.example.com')
+  })
+  it.each(['off', 'anon'])('tlsMode=%s 時 tlsPeerName 正規化為 null（不留下不生效的設定）', (mode) => {
+    expect(DestinationCreateSchema.parse({ ...dest, tlsMode: mode }).tlsPeerName).toBeNull()
   })
 })

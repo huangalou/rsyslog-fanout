@@ -9,10 +9,20 @@ export interface GenOpts { tailPort: number; dataDir: string; tls: TlsFiles }
 // （rsyslogd 8.2302 實測，見 docs/superpowers/specs/2026-10-05-tls-transport-design.md）。
 const TLS_DRIVER = 'gtls'
 
-// TLS 只對 tcp 有意義。schema 已在 API 邊界擋掉 udp + TLS，這裡再判一次協定作為最後防線：
-// 把 TLS 參數寫進 udp 的 input / action 會讓整份設定無法通過驗證。
-const isTlsInput = (i: Input): boolean => i.protocol === 'tcp' && i.tls === true
-const isTlsDest = (d: Destination): boolean => d.protocol === 'tcp' && (d.tlsMode === 'verify' || d.tlsMode === 'anon')
+const isTlsInput = (i: Input): boolean => i.tls === true
+const isTlsDest = (d: Destination): boolean => d.tlsMode === 'verify' || d.tlsMode === 'anon'
+
+// TLS 只跑在 tcp 上，schema 已在 API 邊界擋掉 udp + TLS。若資料仍出現這種組合（DB 被直接改動、
+// 或日後的程式錯誤），寧可讓套用失敗，也不要默默產出一份使用者以為有加密、實際是明文的設定。
+// 停用中的項目一併檢查：它們一啟用就會生效。
+function assertTlsOnlyOnTcp(cfg: FanoutConfig): void {
+  for (const i of cfg.inputs)
+    if (isTlsInput(i) && i.protocol !== 'tcp')
+      throw new Error(`input "${i.name}" has TLS enabled but its protocol is not tcp; refusing to generate a plain-text config`)
+  for (const d of cfg.destinations)
+    if (isTlsDest(d) && d.protocol !== 'tcp')
+      throw new Error(`destination "${d.name}" has TLS enabled but its protocol is not tcp; refusing to generate a plain-text config`)
+}
 
 const destTlsParams = (d: Destination): string => {
   if (!isTlsDest(d)) return ''
@@ -52,6 +62,7 @@ const condition = (r: RouteRule): string | null => {
 }
 
 export function generateConf(cfg: FanoutConfig, opts: GenOpts): string {
+  assertTlsOnlyOnTcp(cfg)
   const L: string[] = []
   const enabledInputs = cfg.inputs.filter((i) => i.enabled)
   const destById = new Map(cfg.destinations.map((d) => [d.id, d]))

@@ -84,6 +84,7 @@ function openAdd() {
   resetForm()
   errorMsg.value = ''
   showForm.value = true
+  void loadTlsStatus() // 憑證可能在頁面載入後才掛上
 }
 
 function openEdit(row: Input) {
@@ -91,6 +92,7 @@ function openEdit(row: Input) {
   form.value = { name: row.name, protocol: row.protocol, port: row.port, enabled: row.enabled, tls: row.tls }
   errorMsg.value = ''
   showForm.value = true
+  void loadTlsStatus()
 }
 
 function closeForm() {

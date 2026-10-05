@@ -50,7 +50,7 @@ const MESSAGES: Record<ErrorCode, string> = {
   NAME_IN_USE: 'Name already in use',
   ROUTE_EXISTS: 'A route between this input and destination already exists',
   TLS_REQUIRES_TCP: 'TLS is only available with the tcp protocol',
-  TLS_PEER_NAME_FORMAT: 'Certificate name may only contain letters, digits, dots, hyphens, and * wildcards',
+  TLS_PEER_NAME_FORMAT: 'Certificate name must be a hostname; a wildcard is only allowed as a leading "*." followed by at least two labels (e.g. *.example.com)',
   TLS_CERT_MISSING: 'TLS inputs need a server certificate: put a valid cert.pem and its key.pem in {dir}',
   INTERNAL: 'Internal server error',
 }
